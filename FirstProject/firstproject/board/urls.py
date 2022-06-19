@@ -20,4 +20,5 @@ urlpatterns = [
     path('main/', views.main),
     path('insert/', views.insert),
     path('show/', views.show),
+    # path('show_multiple/', views.show_multiple),
 ]

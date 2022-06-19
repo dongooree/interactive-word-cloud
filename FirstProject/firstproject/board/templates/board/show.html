@@ -3,78 +3,12 @@
     <script src="https://cdn.anychart.com/releases/v8/js/anychart-tag-cloud.min.js"></script>
     <script>
         anychart.onDocumentReady(function () {
-            // document.getElementByClass("anychart-credits").innerHTML = '';
-            /* var data = [
-                {
-                    "x": "IT",
-                    "value": 590000000,
-                    category: "Sino-Tibetan"
-                },
-                {
-                    "x": "Python",
-                    "value": 283000000,
-                    category: "Indo-European"
-                },
-                {
-                    "x": "소프트웨어",
-                    "value": 544000000,
-                    category: "Indo-European"
-                },
-                {
-                    "x": "JAVA",
-                    "value": 527000000,
-                    category: "Indo-European"
-                }, {
-                    "x": "C++",
-                    "value": 422000000,
-                    category: "Afro-Asiatic"
-                }, {
-                    "x": "HTML",
-                    "value": 620000000,
-                    category: "Afro-Asiatic"
-                }
-            ];
-            */
-
-            var data = [
-                {
-                    "x": "IT",
-                    "value": 590000000,
-                    source : ["4초시대"]
-                },
-                {
-                    "x": "Python",
-                    "value": 283000000,
-                    source : ["4초시대"]
-                },
-                {
-                    "x": "소프트웨어",
-                    "value": 544000000,
-                    source : ["4초시대"]
-                },
-                {
-                    "x": "JAVA",
-                    "value": 527000000,
-                    source : ["원반"]
-                }, {
-                    "x": "C++",
-                    "value": 422000000,
-                    source : ["4초시대", "원반"]
-                }, {
-                    "x": "HTML",
-                    "value": 620000000,
-                    source : ["4초시대", "원반"]
-                }
-            ];
-
             // keyword dict mapping
             var dicObject = {{dict|safe}}
             var srcObject = {{source_dict|safe}}            
-            console.log(dicObject)
-            console.log(srcObject)
-            for (var key in dicObject) {
+            {% comment %} for (var key in dicObject) {
                 console.log("key : " + key +", value : " + dicObject[key]);
-            }
+            } {% endcomment %}
 
             var testData = [];
             
@@ -99,19 +33,25 @@
             chart.listen("pointClick", function(e){
                 // var url = "//en.wiktionary.org/wiki/" + e.point.get("x");
                 // window.open(url, "_blank");
+                document.getElementById("selectedTag").innerHTML = 'Selected Word: ';
+                document.getElementById("selectedTagSource").innerHTML = 'Files:<br>';
+
                 var selectedTag = e.point.get("x");
                 var selectedTagSource = e.point.get("source");
-                document.getElementById("selectedTag").innerHTML = selectedTag;
-                document.getElementById("selectedTagSource").innerHTML = selectedTagSource;
+                document.getElementById("selectedTag").innerHTML += selectedTag;
+                // console.log(selectedTagSource);
+                selectedTagSource.forEach(function (item, index, array) {
+                    document.getElementById("selectedTagSource").innerHTML += '#' + (index + 1) + ' ' + item + '<br>';
+                    //console.log(item)
+                })                
             });
         });
     </script>
 
 </header>
 <body>
-    Tag Cloud Test
+    <h2>Interactive Word Cloud</h2>
     <div>
-        {% comment %} <h3>Selected Tag:</h3> {% endcomment %}
         <h3 id="selectedTag"></h3>
         <h3 id="selectedTagSource"></h3>
     </div>

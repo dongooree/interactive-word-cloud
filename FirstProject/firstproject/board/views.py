@@ -124,95 +124,120 @@ def insert(request):
     Curriculum(name='class1').save()
     Curriculum(name='class2').save()
     return HttpResponse('데이터 입력 완료')
-
-def show(request):
-    # curriculum = Curriculum.objects.all()
-    # result = ''
-    # for c in curriculum:
-    #     result += c.name + '<br>'
-    # return HttpResponse(result)
-    curriculum = Curriculum.objects.all()
     
-    # single pdf    
-    # filepath = '/Users/dongeun/Desktop/TextMining/django-prac/FirstProject/firstproject/static/pdf/Korea to expand fuel tax cuts amid soaring energy costs_ ministry.pdf'
-    filepath = './static/pdf/4초시대.pdf'
-
-    # multiple pdfs in a dir
+def show(request):
+    # Multiple pdfs in a directory
     docs_path = './static/pdf'
     all_keywords = []
+    source_keywords = defaultdict(list)
     
-    # PDF 파일에서 텍스트를 추출
-    raw_pdf = parser.from_file(filepath) 
-    contents = raw_pdf['content'] 
-    contents = contents.strip()
+    for filename in os.listdir(docs_path):
+        filepath = os.path.join(docs_path, filename)
+        
+        # PDF 파일에서 텍스트를 추출
+        print(f'Parsing file: {filename}')
+    
+        raw_pdf = parser.from_file(filepath) 
+        contents = raw_pdf['content'] 
+        contents = contents.strip()
 
-    # print(contents)
-    # print("**** type: ", type(contents))
-    
-    okt = Okt()
-    nouns = okt.nouns(contents) # 명사만 추출
+        okt = Okt()
+        nouns = okt.nouns(contents) # 명사만 추출
 
-    words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
-
-    dict_keywords = Counter(words) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
-    
-    wc = WordCloud(
-            font_path='/Library/Fonts/NotoSansCJKkr-Regular.otf',
-            width=400, height=400, scale=2.0,
-            max_font_size=250
-        )
-    
-    gen = wc.generate_from_frequencies(dict_keywords)
-    # print(dict_keywords)
-    # plt.figure()
-    # plt.imshow(gen)
-    # wc.to_file('outputImage.png')
-    
-    
-    # Word Cloud for all files in a directory
-    # docs_path = '/Users/dongeun/Desktop/TextMining/django-prac/FirstProject/firstproject/static/pdf'
-    # ignore_words = ['Fig','like','e.g.','i.e.','one']
-    # all_keywords = []
-
-    # for filename in os.listdir(docs_path):
-    #     filepath = os.path.join(docs_path, filename)
-    #     if os.path.isfile(filepath) and filename.endswith('.pdf'):
-    #         print(f'Parsing file: {filename}')
-    #         try:
-    #             file_text = read_file(filepath)
-    #             keywords = extract_keywords(file_text,min_word_length = 3, ignore_words = ignore_words)
-    #             all_keywords.extend(keywords)
-    #         except:
-    #             print(f'ERROR!!! Unable to parse file: {filename}. Ignoring file!!')
+        words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
+        distinct_words = set(words)
+        for word in distinct_words:
+            source_keywords[word].append(filename)
+            # source_keywords[word].append(filepath)
             
+        all_keywords.extend(words)
+               
+    dict_keywords = Counter(all_keywords) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
 
-    # print(f'Completed reading all pdf files in folder:{docs_path}')
-
-    # create_word_cloud(all_keywords, bg = 'black', cmap = 'Set2',random_state = 100, width = 1000, height = 1000)
-    # #  End PDF
-    
-   
     ###
     # 빈도로 내림차순 정렬
     dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
-    # print("----- 자르기 전: ", len(dict_keywords))
     dict_keywords = dict(islice(dict_keywords.items(), 100))
-    source_keywords = defaultdict(list)
-    for key in dict_keywords.keys():
-        source_keywords[key].append(filepath)
+    # print("********** all keywords **************")
+    # print(dict_keywords)
     
-    # dict_keywords_list = list(dict_keywords)
     dict_keywords = json.dumps(dict_keywords, indent=4, ensure_ascii=False)
     source_keywords = json.dumps(source_keywords, indent=4, ensure_ascii=False)
-    print("원래 dict_keywords: ", dict_keywords)
-    print("------------------------------------")
-    print("path붙인 source_keywords: ", source_keywords)
+    # print("원래 dict_keywords: ", dict_keywords)
+    # print("------------------------------------")
+    # print("path붙인 source_keywords: ", source_keywords)
     # print("----- 자른 후: ", len(dict_keywords))
     
     # dict_source_list
     return render(
         request, 'board/show.html',
         { 'dict': dict_keywords,
-         'source_dict' : source_keywords}
+         'source_dict' : source_keywords
+        }
     )
+
+
+# def show(request):
+#     # curriculum = Curriculum.objects.all()
+#     # result = ''
+#     # for c in curriculum:
+#     #     result += c.name + '<br>'
+#     # return HttpResponse(result)
+#     curriculum = Curriculum.objects.all()
     
+#     # single pdf    
+#     filepath = './static/pdf/4초시대.pdf'
+
+#     # multiple pdfs in a dir
+#     docs_path = './static/pdf'
+#     all_keywords = []
+    
+#     # PDF 파일에서 텍스트를 추출
+#     raw_pdf = parser.from_file(filepath) 
+#     contents = raw_pdf['content'] 
+#     contents = contents.strip()
+
+#     # print(contents)
+#     # print("**** type: ", type(contents))
+    
+#     okt = Okt()
+#     nouns = okt.nouns(contents) # 명사만 추출
+
+#     words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
+
+#     dict_keywords = Counter(words) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
+    
+#     wc = WordCloud(
+#             font_path='/Library/Fonts/NotoSansCJKkr-Regular.otf',
+#             width=400, height=400, scale=2.0,
+#             max_font_size=250
+#         )
+    
+#     gen = wc.generate_from_frequencies(dict_keywords)
+#     # print(dict_keywords)
+#     # plt.figure()
+#     # plt.imshow(gen)
+#     # wc.to_file('outputImage.png')
+    
+#     ###
+#     # 빈도로 내림차순 정렬
+#     dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
+#     # print("----- 자르기 전: ", len(dict_keywords))
+#     dict_keywords = dict(islice(dict_keywords.items(), 100))
+#     for key in dict_keywords.keys():
+#         source_keywords[key].append(filepath)
+    
+#     # dict_keywords_list = list(dict_keywords)
+#     dict_keywords = json.dumps(dict_keywords, indent=4, ensure_ascii=False)
+#     source_keywords = json.dumps(source_keywords, indent=4, ensure_ascii=False)
+#     print("원래 dict_keywords: ", dict_keywords)
+#     print("------------------------------------")
+#     print("path붙인 source_keywords: ", source_keywords)
+#     # print("----- 자른 후: ", len(dict_keywords))
+    
+#     # dict_source_list
+#     return render(
+#         request, 'board/show.html',
+#         { 'dict': dict_keywords,
+#          'source_dict' : source_keywords}
+#     )
