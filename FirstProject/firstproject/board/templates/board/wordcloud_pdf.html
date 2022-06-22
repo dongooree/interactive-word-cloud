@@ -21,7 +21,7 @@
             }
             
             console.log(testData);
-            
+
             // var chart = anychart.tagCloud(data);
             var chart = anychart.tagCloud(testData);
             chart.angles([0]);
@@ -36,7 +36,7 @@
                 // var url = "//en.wiktionary.org/wiki/" + e.point.get("x");
                 // window.open(url, "_blank");
                 document.getElementById("selectedTag").innerHTML = 'Selected Word: ';
-                document.getElementById("selectedTagSource").innerHTML = 'Files:<br>';
+                document.getElementById("selectedTagSource").innerHTML = 'Sources:<br>';
 
                 var selectedTag = e.point.get("x");
                 var selectedTagSource = e.point.get("source");

@@ -241,20 +241,6 @@ def main(request):
     # Counter로 빈도 집계
     counts = Counter(naword)
     dict_keywords = counts.most_common(100)
-
-    ###
-    # 빈도로 내림차순 정렬
-    # dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
-    # dict_keywords = dict(islice(dict_keywords.items(), 100))
-    # print("********** all keywords **************")
-    # print(dict_keywords)
-    
-    # dict_keywords = json.dumps(dict_keywords, indent=4, ensure_ascii=False)
-    # source_keywords = json.dumps(source_keywords, indent=4, ensure_ascii=False)
-    # print("원래 dict_keywords: ", dict_keywords)
-    # print("------------------------------------")
-    # print("path붙인 source_keywords: ", source_keywords)
-    # print("----- 자른 후: ", len(dict_keywords))
     
     mask = np.array(Image.open('./static/image/Circle.JPG'))
 
@@ -293,6 +279,97 @@ def wordcloud_url(request):
     all_keywords = []
     dict_keywords = []
     source_keywords = defaultdict(list)
+    
+    url_list = [
+        'https://n.news.naver.com/mnews/article/030/0003024991?sid=105',
+        'https://www.etnews.com/20220621000152',
+        'https://n.news.naver.com/mnews/article/030/0003024808?sid=105',
+        'https://n.news.naver.com/mnews/article/082/0001161359?sid=105',
+        'https://n.news.naver.com/mnews/article/014/0004855624?sid=105',
+        'https://n.news.naver.com/mnews/article/014/0004855681?sid=101',
+        'https://n.news.naver.com/mnews/article/277/0005106755?sid=105'
+    ]
+
+    for url in url_list:
+        # url에서 텍스트를 추출
+        print(f'Parsing url: {url}')
+        wordTxt = makeAll(url)     # 가공 전 기사 text를 return
+    
+        # 심볼 제거
+        wordTxt = re.compile(r'[^\w\s]').sub(' ', wordTxt)
+        # 한글만 추출
+        korean = re.compile('[\u3131-\u3163\uac00-\ud7a3]+')
+        parseText= re.sub(korean, '', wordTxt)
+
+        # nltk 함수로 영어 분리
+        en_word = nltk.word_tokenize(parseText)
+        tokens_pos = nltk.pos_tag(en_word)
+        # print(tokens_pos)
+        en_Nwords = []
+        for word, pos in tokens_pos :
+            if 'NN' in pos or 'JJ' in pos:
+                en_Nwords.append(word)
+        # print(en_Nwords)
+
+        # Okt 함수를 이용해 형태소 분석
+        okt = Okt()
+        # nouns = okt.nouns(contents) # 명사만 추출
+        # words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
+
+        naword =[]
+        _naword =[]
+        _naword = okt.pos(wordTxt)
+        for word, tag in _naword:
+            if tag in ['Noun','Adjective']:
+                naword.append(word)
+        # print(naword)
+
+        for word in en_Nwords:
+            naword.append(word)
+        # print(naword)
+
+        # 한국어 + 영어 명사 추출 후 불용어 제거
+        # 한글 stopwords txt 읽어서 추가
+        stopwords = set(STOPWORDS)
+        st_file_path = './static/text/stopwords_KO.txt'
+        with open(st_file_path, "r", encoding="UTF-8") as f:
+            lines = f.read().splitlines()
+
+        for stw in lines:
+            stopwords.add(stw)
+
+        # Stopwords Customizing https
+        # target_stop = ['https', 'all', 'article', 'copyright', 'print', 'etnews', 'mnews', 'news']
+        # for t in target_stop:
+        #     stopwords.add(t)
+        
+        naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
+        # naword = [i.upper() for i in naword]
+
+        # 중복제거된 단어들 - 원본 filename을 저장
+        distinct_words = set(naword)
+        for word in distinct_words:
+            source_keywords[word].append(url)
+            # source_keywords[word].append(filepath)
+
+        # 한 pdf 다 읽은 뒤 all keywords에 추가
+        all_keywords.extend(naword)
+               
+    dict_keywords = Counter(all_keywords) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
+
+    ### dict_keywords
+    # 빈도로 내림차순 정렬
+    dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
+    dict_keywords = dict(islice(dict_keywords.items(), 100))
+    # print("********** all keywords **************")
+    # print(dict_keywords)
+
+    dict_keywords = json.dumps(dict_keywords, indent=4, ensure_ascii=False)
+    source_keywords = json.dumps(source_keywords, indent=4, ensure_ascii=False)
+    # print("원래 dict_keywords: ", dict_keywords)
+    # print("------------------------------------")
+    # print("path붙인 source_keywords: ", source_keywords)
+    # print("----- 자른 후: ", len(dict_keywords))
 
     return render(
         request, 'board/wordcloud_url.html',
@@ -360,8 +437,12 @@ def wordcloud_pdf(request):
         for stw in lines:
             stopwords.add(stw)
 
+        # Stopwords Customizing https
+        target_stop = ['인쇄', 'https', 'all', 'article', 'copyright', 'print', 'etnews', 'mnews', 'news']
+        for t in target_stop:
+            stopwords.add(t)
+        
         naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
-        # naword = [i.upper() for i in naword]
 
         # 중복제거된 단어들 - 원본 filename을 저장
         distinct_words = set(naword)
@@ -400,68 +481,3 @@ def insert(request):
     Curriculum(name='class1').save()
     Curriculum(name='class2').save()
     return HttpResponse('데이터 입력 완료')
-
-# def show(request):
-#     # curriculum = Curriculum.objects.all()
-#     # result = ''
-#     # for c in curriculum:
-#     #     result += c.name + '<br>'
-#     # return HttpResponse(result)
-#     curriculum = Curriculum.objects.all()
-    
-#     # single pdf    
-#     filepath = './static/pdf/4초시대.pdf'
-
-#     # multiple pdfs in a dir
-#     docs_path = './static/pdf'
-#     all_keywords = []
-    
-#     # PDF 파일에서 텍스트를 추출
-#     raw_pdf = parser.from_file(filepath) 
-#     contents = raw_pdf['content'] 
-#     contents = contents.strip()
-
-#     # print(contents)
-#     # print("**** type: ", type(contents))
-    
-#     okt = Okt()
-#     nouns = okt.nouns(contents) # 명사만 추출
-
-#     words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
-
-#     dict_keywords = Counter(words) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
-    
-#     wc = WordCloud(
-#             font_path='/Library/Fonts/NotoSansCJKkr-Regular.otf',
-#             width=400, height=400, scale=2.0,
-#             max_font_size=250
-#         )
-    
-#     gen = wc.generate_from_frequencies(dict_keywords)
-#     # print(dict_keywords)
-#     # plt.figure()
-#     # plt.imshow(gen)
-#     # wc.to_file('outputImage.png')
-    
-#     ###
-#     # 빈도로 내림차순 정렬
-#     dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
-#     # print("----- 자르기 전: ", len(dict_keywords))
-#     dict_keywords = dict(islice(dict_keywords.items(), 100))
-#     for key in dict_keywords.keys():
-#         source_keywords[key].append(filepath)
-    
-#     # dict_keywords_list = list(dict_keywords)
-#     dict_keywords = json.dumps(dict_keywords, indent=4, ensure_ascii=False)
-#     source_keywords = json.dumps(source_keywords, indent=4, ensure_ascii=False)
-#     print("원래 dict_keywords: ", dict_keywords)
-#     print("------------------------------------")
-#     print("path붙인 source_keywords: ", source_keywords)
-#     # print("----- 자른 후: ", len(dict_keywords))
-    
-#     # dict_source_list
-#     return render(
-#         request, 'board/show.html',
-#         { 'dict': dict_keywords,
-#          'source_dict' : source_keywords}
-#     )
