@@ -197,7 +197,7 @@ def main(request):
 
     # 심볼 제거
     wordTxt = re.compile(r'[^\w\s]').sub(' ',wordTxt)
-    # 한글삭제
+    # 한글만 추출
     korean = re.compile('[\u3131-\u3163\uac00-\ud7a3]+')
     parseText= re.sub(korean, '', wordTxt)
 
@@ -290,8 +290,16 @@ def main(request):
     return HttpResponse('<u>Word Cloud has been successfully generated.</u>')
     
 def wordcloud_url(request):
+    all_keywords = []
+    dict_keywords = []
+    source_keywords = defaultdict(list)
 
-    return render()
+    return render(
+        request, 'board/wordcloud_url.html',
+        { 'dict': dict_keywords,
+         'source_dict' : source_keywords
+        }
+    )
 
 def wordcloud_pdf(request):
     # Multiple pdfs in a directory
@@ -309,16 +317,60 @@ def wordcloud_pdf(request):
         contents = raw_pdf['content'] 
         contents = contents.strip()
 
-        okt = Okt()
-        nouns = okt.nouns(contents) # 명사만 추출
+        # 심볼 제거
+        wordTxt = re.compile(r'[^\w\s]').sub(' ', contents)
+        # 한글만 추출
+        korean = re.compile('[\u3131-\u3163\uac00-\ud7a3]+')
+        parseText= re.sub(korean, '', wordTxt)
 
-        words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
-        distinct_words = set(words)
+        # nltk 함수로 영어 분리
+        en_word = nltk.word_tokenize(parseText)
+        tokens_pos = nltk.pos_tag(en_word)
+        # print(tokens_pos)
+        en_Nwords = []
+        for word, pos in tokens_pos :
+            if 'NN' in pos or 'JJ' in pos:
+                en_Nwords.append(word)
+        # print(en_Nwords)
+
+        # Okt 함수를 이용해 형태소 분석
+        okt = Okt()
+        # nouns = okt.nouns(contents) # 명사만 추출
+        # words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
+
+        naword =[]
+        _naword =[]
+        _naword = okt.pos(wordTxt)
+        for word, tag in _naword:
+            if tag in ['Noun','Adjective']:
+                naword.append(word)
+        # print(naword)
+
+        for word in en_Nwords:
+            naword.append(word)
+        # print(naword)
+
+        # 한국어 + 영어 명사 추출 후 불용어 제거
+        # 한글 stopwords txt 읽어서 추가
+        stopwords = set(STOPWORDS)
+        st_file_path = './static/text/stopwords_KO.txt'
+        with open(st_file_path, "r", encoding="UTF-8") as f:
+            lines = f.read().splitlines()
+
+        for stw in lines:
+            stopwords.add(stw)
+
+        naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
+        # naword = [i.upper() for i in naword]
+
+        # 중복제거된 단어들 - 원본 filename을 저장
+        distinct_words = set(naword)
         for word in distinct_words:
             source_keywords[word].append(filename)
             # source_keywords[word].append(filepath)
 
-        all_keywords.extend(words)
+        # 한 pdf 다 읽은 뒤 all keywords에 추가
+        all_keywords.extend(naword)
                
     dict_keywords = Counter(all_keywords) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
 
@@ -328,7 +380,7 @@ def wordcloud_pdf(request):
     dict_keywords = dict(islice(dict_keywords.items(), 100))
     # print("********** all keywords **************")
     # print(dict_keywords)
-    
+
     dict_keywords = json.dumps(dict_keywords, indent=4, ensure_ascii=False)
     source_keywords = json.dumps(source_keywords, indent=4, ensure_ascii=False)
     # print("원래 dict_keywords: ", dict_keywords)
@@ -338,7 +390,7 @@ def wordcloud_pdf(request):
     
     # dict_source_list
     return render(
-        request, 'board/wordcloud_url.html',
+        request, 'board/wordcloud_pdf.html',
         { 'dict': dict_keywords,
          'source_dict' : source_keywords
         }
