@@ -41,7 +41,7 @@
                 document.getElementById("selectedTag").innerHTML += selectedTag;
                 // console.log(selectedTagSource);
                 selectedTagSource.forEach(function (item, index, array) {
-                    document.getElementById("selectedTagSource").innerHTML += '#' + (index + 1) + ' ' + item + '<br>';
+                    document.getElementById("selectedTagSource").innerHTML += '#' + (index + 1) + ' <a href="' + item + '" target="_blank" rel="noopener noreferrer">' + item + '<a><br>';
                     //console.log(item)
                 })                
             });

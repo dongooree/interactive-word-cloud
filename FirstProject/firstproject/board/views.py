@@ -27,7 +27,7 @@ from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 import pickle
 import re
-
+from ckonlpy.tag import Twitter
 # nltk.download('gutenberg')
 # nltk.download('maxent_treebank_pos_tagger')
 # nltk.download('punkt')
@@ -46,6 +46,35 @@ driver = webdriver.Chrome('chromedriver.exe', options=options)
 
 t = time.time()
 driver.set_page_load_timeout(10)
+
+url_list = [
+    'https://n.news.naver.com/mnews/article/092/0002260916?sid=105',
+    'https://n.news.naver.com/mnews/article/366/0000823875?sid=105',
+    'https://n.news.naver.com/mnews/article/003/0011273577?sid=105',
+    'https://n.news.naver.com/mnews/article/031/0000681807?sid=105',
+    'https://www.hankyung.com/it/article/202206281272Y',
+    # 'https://www.etnews.com/20220628000152',
+    'https://n.news.naver.com/mnews/article/030/0003026448?sid=101',
+    # 'https://www.etnews.com/20220628000166'
+    'https://n.news.naver.com/mnews/article/030/0003026460?sid=105'
+]
+
+## 사용자 사전에 명사 등록
+twitter = Twitter()
+twitter.add_dictionary(
+    ['메타버스', 'DBMS', '애널리틱스', '로보틱스', 'LG유플러스', 'LGCNS', 'LG화학', '삼성전자', '디지털트랜스포메이션', 'SKT', 'SK쉴더스',
+    '세일즈포스','하이퍼포스', '랜섬웨어', '액화수소', '폴더블', '스마트폰', '라이다'],
+    'Noun')
+
+# 불용어 사전 - 파일 읽어서 등록
+global stopwords
+stopwords = set(STOPWORDS)
+st_file_path = './static/text/stopwords_KO.txt'
+with open(st_file_path, "r", encoding="UTF-8") as f:
+    lines = f.read().splitlines()
+
+for stw in lines:
+    stopwords.add(stw)
 
 def read_file_textract(filepath):
     text = textract.process(filepath)
@@ -157,7 +186,7 @@ def makeAll(url):
     else :
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
     end = time.time()
-    print(f"{end - start:.5f} sec\t\t" + str(len(_cont.text)) + " 길이")
+    print(f"{end - start:.5f} sec\t\t" + str(len(_cont.text)) + " 자")
     print(_cont.size)
     print('*****')
     time.sleep(2)
@@ -168,7 +197,9 @@ def main(request):
     # 한글 출력 위한 폰트 설치
     # sys_font = fm.findSystemFonts()
     # [f for f in sys_font if 'Nanum' in f]
-
+    global url_list
+    global twitter
+    global stopwords
     font_path = r'D:\\Profiles\\20220170\\AppData\\Local\\Microsoft\\Windows\\Fonts\\NanumGothic.ttf'
     font_name = fm.FontProperties(fname=font_path, size=10).get_name()
     # print(font_name)
@@ -176,21 +207,10 @@ def main(request):
     plt.rcParams["font.family"] = font_name
     # fm._rebuild()
 
-
     # print('------------발행내용------------')
     wordTxt = ''
 
-    article_list = [
-        'https://n.news.naver.com/mnews/article/030/0003024991?sid=105',
-        'https://www.etnews.com/20220621000152',
-        'https://n.news.naver.com/mnews/article/030/0003024808?sid=105',
-        'https://n.news.naver.com/mnews/article/082/0001161359?sid=105',
-        'https://n.news.naver.com/mnews/article/014/0004855624?sid=105',
-        'https://n.news.naver.com/mnews/article/014/0004855681?sid=101',
-        'https://n.news.naver.com/mnews/article/277/0005106755?sid=105'
-    ]
-
-    for url in article_list:
+    for url in url_list:
         wordTxt += makeAll(url)
 
     # print(wordTxt)
@@ -212,11 +232,14 @@ def main(request):
     # print(en_Nwords)
 
     # Okt 함수를 이용해 형태소 분석
-    okt = Okt()
+    # okt = Okt()
 
     naword =[]
     _naword =[]
-    _naword = okt.pos(wordTxt)
+    # _naword = okt.pos(wordTxt)
+
+    _naword = twitter.pos(wordTxt)
+        
     for word, tag in _naword:
         if tag in ['Noun','Adjective']:
             naword.append(word)
@@ -227,16 +250,13 @@ def main(request):
     # print(naword)
 
     # 한국어 + 영어 명사 추출 후 불용어 제거
-    # 한글 stopwords txt 읽어서 추가
-    stopwords = set(STOPWORDS)
-    st_file_path = './static/text/stopwords_KO.txt'
-    with open(st_file_path, "r", encoding="UTF-8") as f:
-        lines = f.read().splitlines()
+    # custom stopwords
+    stw_list = []
+    if len(stw_list) > 0:
+        for c_stw in stw_list:
+            stopwords.add(c_stw)
 
-    for stw in lines:
-        stopwords.add(stw)
-
-    naword = [word for word in naword if not word in stopwords]
+    naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
 
     # Counter로 빈도 집계
     counts = Counter(naword)
@@ -251,19 +271,19 @@ def main(request):
                 max_words=100, max_font_size=125, random_state=87, 
                 width=400, height=400)# mask.shape[0]
 
-    # wc.generate_from_frequencies(dict_keywords)    ???
+    # wc.generate_from_frequencies(dict_keywords)    
     wc.generate_from_frequencies(dict(dict_keywords))
     
     # wc.generate(wordTxt)
     fig = plt.figure(figsize = (10,10))
     plt.imshow(wc, interpolation="bilinear")
     plt.axis('off')
-    plt.show()
+    # plt.show()
     
     output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\wc images"
     timestr = time.strftime("%Y%m%d-%H%M%S")
     wc.to_file(path.join(output_path, 'wc_' + timestr + '.png'))
-    plt.close()
+    # plt.close()
 
     # dict_source_list
     # return render(
@@ -273,22 +293,16 @@ def main(request):
     #     }
     # )
 
-    return HttpResponse('<u>Word Cloud has been successfully generated.</u>')
+    return HttpResponse('<h3>Word Cloud has been successfully generated. <br> Check your output file directory: ' 
+        + output_path
+        + '</h3>')
     
 def wordcloud_url(request):
     all_keywords = []
     dict_keywords = []
     source_keywords = defaultdict(list)
     
-    url_list = [
-        'https://n.news.naver.com/mnews/article/030/0003024991?sid=105',
-        'https://www.etnews.com/20220621000152',
-        'https://n.news.naver.com/mnews/article/030/0003024808?sid=105',
-        'https://n.news.naver.com/mnews/article/082/0001161359?sid=105',
-        'https://n.news.naver.com/mnews/article/014/0004855624?sid=105',
-        'https://n.news.naver.com/mnews/article/014/0004855681?sid=101',
-        'https://n.news.naver.com/mnews/article/277/0005106755?sid=105'
-    ]
+    global url_list
 
     for url in url_list:
         # url에서 텍스트를 추출
@@ -318,7 +332,8 @@ def wordcloud_url(request):
 
         naword =[]
         _naword =[]
-        _naword = okt.pos(wordTxt)
+        # _naword = okt.pos(wordTxt)
+        _naword = twitter.pos(wordTxt)
         for word, tag in _naword:
             if tag in ['Noun','Adjective']:
                 naword.append(word)
@@ -338,7 +353,7 @@ def wordcloud_url(request):
         for stw in lines:
             stopwords.add(stw)
 
-        # Stopwords Customizing https
+        # Stopwords Customizing
         # target_stop = ['https', 'all', 'article', 'copyright', 'print', 'etnews', 'mnews', 'news']
         # for t in target_stop:
         #     stopwords.add(t)
@@ -391,7 +406,7 @@ def wordcloud_pdf(request):
         print(f'Parsing file: {filename}')
     
         raw_pdf = parser.from_file(filepath) 
-        contents = raw_pdf['content'] 
+        contents = raw_pdf['content']       # PDF DRM 걸려있으면 못 읽음
         contents = contents.strip()
 
         # 심볼 제거
@@ -417,7 +432,8 @@ def wordcloud_pdf(request):
 
         naword =[]
         _naword =[]
-        _naword = okt.pos(wordTxt)
+        # _naword = okt.pos(wordTxt)
+        _naword = twitter.pos(wordTxt)
         for word, tag in _naword:
             if tag in ['Noun','Adjective']:
                 naword.append(word)
@@ -425,20 +441,10 @@ def wordcloud_pdf(request):
 
         for word in en_Nwords:
             naword.append(word)
-        # print(naword)
-
-        # 한국어 + 영어 명사 추출 후 불용어 제거
-        # 한글 stopwords txt 읽어서 추가
-        stopwords = set(STOPWORDS)
-        st_file_path = './static/text/stopwords_KO.txt'
-        with open(st_file_path, "r", encoding="UTF-8") as f:
-            lines = f.read().splitlines()
-
-        for stw in lines:
-            stopwords.add(stw)
 
         # Stopwords Customizing https
-        target_stop = ['인쇄', 'https', 'all', 'article', 'copyright', 'print', 'etnews', 'mnews', 'news']
+        target_stop = ['인쇄', '뉴스', 'https', 'all', 'article',
+            'copyright', 'COPYRIGHT', 'print', 'etnews', 'mnews', 'news', '오전', '금지', 'rights', 'RIGHTS']
         for t in target_stop:
             stopwords.add(t)
         
@@ -481,3 +487,6 @@ def insert(request):
     Curriculum(name='class1').save()
     Curriculum(name='class2').save()
     return HttpResponse('데이터 입력 완료')
+
+def test(request):
+    return HttpResponse('접속이 잘 되네용')
