@@ -23,19 +23,44 @@ import numpy as np
 import json
 from itertools import islice
 import time
+import requests
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
 import pickle
 import re
 from ckonlpy.tag import Twitter
+from datetime import datetime
+
+from soynlp.utils import DoublespaceLineCorpus
+from soynlp.noun import LRNounExtractor_v2
+from soynlp.word import WordExtractor
 # nltk.download('gutenberg')
 # nltk.download('maxent_treebank_pos_tagger')
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
 # nltk.download('stopwords')
+import pandas as pd
+import math
+
+# df = pd.read_csv('./static/text/stopwords_KO2.csv', encoding="UTF-8") # encoding='cp949'
+# df = pd.read_csv('./static/text/stopwords_KO2.csv', encoding='ISO-8859-1')
+# # df.loc[-1] = '가'
+# df.index = df.index + 1
+# df = df.sort_index()
+# df = df.rename(columns={'가': 'words'})
+
+# 추가하고 싶은 Stopwords 입력 - 워드 클라우드에 반영
+NewStopwords = ''
+NewStopwords = set(NewStopwords.split(' '))
+# idx = len(df.index)
+# for word in NewStopwords :
+#     if not (df['words']==word).any() : 
+#         df.loc[idx] = word
+#         idx += 1
+
 # Create your views here.
-# Read PDF files
-# Method 1. textract
 
 options = webdriver.ChromeOptions()
 options.add_argument('--headless')
@@ -48,33 +73,154 @@ t = time.time()
 driver.set_page_load_timeout(10)
 
 url_list = [
-    'https://n.news.naver.com/mnews/article/092/0002260916?sid=105',
-    'https://n.news.naver.com/mnews/article/366/0000823875?sid=105',
-    'https://n.news.naver.com/mnews/article/003/0011273577?sid=105',
-    'https://n.news.naver.com/mnews/article/031/0000681807?sid=105',
-    'https://www.hankyung.com/it/article/202206281272Y',
-    # 'https://www.etnews.com/20220628000152',
-    'https://n.news.naver.com/mnews/article/030/0003026448?sid=101',
-    # 'https://www.etnews.com/20220628000166'
-    'https://n.news.naver.com/mnews/article/030/0003026460?sid=105'
+
 ]
+mk_url_list = []
+hk_url_list = []
+
 
 ## 사용자 사전에 명사 등록
 twitter = Twitter()
 twitter.add_dictionary(
-    ['메타버스', 'DBMS', '애널리틱스', '로보틱스', 'LG유플러스', 'LGCNS', 'LG화학', '삼성전자', '디지털트랜스포메이션', 'SKT', 'SK쉴더스',
-    '세일즈포스','하이퍼포스', '랜섬웨어', '액화수소', '폴더블', '스마트폰', '라이다'],
-    'Noun')
+    ['메타버스', 'DBMS'], 'Noun')
 
 # 불용어 사전 - 파일 읽어서 등록
 global stopwords
 stopwords = set(STOPWORDS)
 st_file_path = './static/text/stopwords_KO.txt'
+
 with open(st_file_path, "r", encoding="UTF-8") as f:
     lines = f.read().splitlines()
 
 for stw in lines:
     stopwords.add(stw)
+
+
+def home(request):
+    return render(
+        request, 'board/home.html'
+    )
+
+def word_score(score):
+    return ((score.cohesion_forward * 10) * (math.exp(score.right_branching_entropy + 0.5)))
+
+### 매일경제 IT/과학 -> IT/인터넷 오늘자 기사 크롤링
+today = datetime.today().strftime('%Y.%m.%d')
+print("----------- today: ", today)    
+
+def get_mk_href(soup):
+    global today, url_list, mk_url_list
+    # soup에 저장되어 있는 각 기사에 접근할 수 있는 href들을 담은 리스트를 반환
+
+    # dl = soup.find("dl", class_="article_list")
+
+    # for dt in dl.find_all("dt", class_="tit"):
+    #     print(dt.find("a").attrs)
+    for news in soup.find("div", class_="list_area").find_all("dl"):
+        date = news.find("dd", class_="desc").find("span", class_="date")
+        date = date.get_text()[:10]
+        
+        # 날짜 수동 입력해서 테스트 (리스트가 최신순 정렬 안돼있을 때도 있음)
+        # c_today = '2022.07.04'
+        # if date != c_today:
+        if date != today:  
+            break
+        dt = news.find("dt", class_="tit")
+        url = dt.find("a")["href"]
+        title = dt.get_text()
+        # print(title)
+        # print(url)
+
+        mk_url_list.append(url)
+        # print(mk_url_list)
+        # print(date)
+        # print()
+
+    return mk_url_list
+
+def crawling_today_mk(request):
+    global mk_url_list, today, url_list
+    list_href = []
+    breaker = False
+    mk_url_list = []
+    url = "https://www.mk.co.kr/news/it/internet/"
+    # url = "https://www.mk.co.kr/news/it/?page=1"
+
+    # 매경 - 하루에 4페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
+    for page in range(4):
+        curr_url = "https://www.mk.co.kr/news/it/internet/?page=" + str(page)
+        # raw = requests.get(curr_url, verify=False)
+
+        print("----------- target url: ", curr_url)
+
+        result = requests.get(curr_url, verify=False)
+        soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
+
+        # list_href = get_mk_href(soup)
+
+        # soup에 저장되어 있는 각 기사에 접근할 수 있는 href들을 담은 리스트를 반환
+
+        for news in soup.find("div", class_="list_area").find_all("dl"):
+            date = news.find("dd", class_="desc").find("span", class_="date")
+            date = date.get_text()[:10]
+            
+            # 날짜 수동 입력해서 테스트 (리스트가 최신순 정렬 안돼있을 때도 있음)
+            # c_today = '2022.07.04'
+            # if date != c_today:
+            if date != today: 
+                breaker = True 
+                break
+
+            dt = news.find("dt", class_="tit")
+            url = dt.find("a")["href"]
+            title = dt.get_text()
+            # print(title)
+            # print(url)
+
+            mk_url_list.append(url)
+            # print(date)
+            # print()
+            
+        # if list_href == 0:
+        #     break
+        # print(list_href)
+        if breaker == True:
+            break
+    
+    print(mk_url_list)
+
+    return wordcloud_url(request, mk_url_list)
+
+def crawling_today_hk(request):
+    global hk_url_list, today, url_list
+    list_href = []
+    breaker = False
+    url = "https://www.hankyung.com/it?date=" + today
+    liTags_in_ul = [] 
+    # 한경 - 하루에 4페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
+    for page in range(1, 5):    # 한경 IT섹션은 page 1부터 시작
+        curr_url = url + "&page=" + str(page)
+        # print("----------- 한국경제 target url: ", curr_url)
+        result = requests.get(curr_url, verify=False)
+        soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
+        news_uls = soup.find_all("ul", class_="list_basic")
+
+        for ul in news_uls:
+            lis_in_ul = ul.find_all("li")
+            liTags_in_ul.append(lis_in_ul)
+
+    for liTags in liTags_in_ul:
+        for li in liTags:
+            # 한경은 url에 date쿼리 있으므로 날짜검사 생략
+            article = li.find("div", class_="article").find("h3", class_="tit")
+            article_href = article.find("a")["href"]
+            article_title = article.find("a").get_text()
+            # print(article_href)     # 기사 링크
+            # print(article_title)    # 기사 제목
+            hk_url_list.append(article_href)
+            # print()
+
+    return wordcloud_url(request, hk_url_list)
 
 def read_file_textract(filepath):
     text = textract.process(filepath)
@@ -174,7 +320,7 @@ def makeAll(url):
         driver.execute_script("window.stop();")
     print('Time consuming:', time.time() - t)
 
-    from selenium.webdriver.common.by import By
+    # from selenium.webdriver.common.by import By
     if 'etnews' in url : 
         _cont = driver.find_element(By.CLASS_NAME, 'article_txt')
     elif 'mk.co.kr' in url : 
@@ -208,10 +354,14 @@ def main(request):
     # fm._rebuild()
 
     # print('------------발행내용------------')
+
     wordTxt = ''
 
     for url in url_list:
         wordTxt += makeAll(url)
+
+    # 한달치 기사로 text 만들기
+    # wordTxt = open('./static/text/article.txt', "r", encoding="UTF-8").read()
 
     # print(wordTxt)
 
@@ -297,14 +447,14 @@ def main(request):
         + output_path
         + '</h3>')
     
-def wordcloud_url(request):
+def wordcloud_url(request, urls):
     all_keywords = []
     dict_keywords = []
     source_keywords = defaultdict(list)
     
-    global url_list
+    # global url_list
 
-    for url in url_list:
+    for url in urls:
         # url에서 텍스트를 추출
         print(f'Parsing url: {url}')
         wordTxt = makeAll(url)     # 가공 전 기사 text를 return
@@ -375,7 +525,7 @@ def wordcloud_url(request):
     ### dict_keywords
     # 빈도로 내림차순 정렬
     dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
-    dict_keywords = dict(islice(dict_keywords.items(), 100))
+    dict_keywords = dict(islice(dict_keywords.items(), 200))
     # print("********** all keywords **************")
     # print(dict_keywords)
 
@@ -490,3 +640,207 @@ def insert(request):
 
 def test(request):
     return HttpResponse('접속이 잘 되네용')
+
+
+# Views
+def main_new(request):
+    # 한글 출력 위한 폰트 설치
+    # sys_font = fm.findSystemFonts()
+    # [f for f in sys_font if 'Nanum' in f]
+    global url_list
+    global twitter
+    global stopwords, df, NewStopwords, t, driver, options
+    font_path = r'D:\\Profiles\\20220170\\AppData\\Local\\Microsoft\\Windows\\Fonts\\NanumGothic.ttf'
+    font_name = fm.FontProperties(fname=font_path, size=10).get_name()
+    # print(font_name)
+    plt.rc('font', family=font_name)
+    plt.rcParams["font.family"] = font_name
+    # fm._rebuild()
+
+    # print('------------발행내용------------')
+
+    wordTxt = ''
+
+    for url in url_list:
+        wordTxt += makeAll(url)
+
+    # 한달치 기사로 text 만들기
+    # wordTxt = open('./static/text/article.txt', "r", encoding="UTF-8").read()
+
+    # print(wordTxt)
+
+    # 심볼 제거
+    wordTxt = re.compile(r'[^\w\s]').sub(' ',wordTxt)
+    # 한글만 추출
+    korean = re.compile('[\u3131-\u3163\uac00-\ud7a3]+')
+    parseText= re.sub(korean, '', wordTxt)
+
+    # nltk 함수로 영어 분리
+    en_word = nltk.word_tokenize(parseText)
+    tokens_pos = nltk.pos_tag(en_word)
+    # print(tokens_pos)
+    en_Nwords = []
+    for word, pos in tokens_pos :
+        if 'NN' in pos or 'JJ' in pos:
+            en_Nwords.append(word)
+    # print(en_Nwords)
+
+    # Okt 함수를 이용해 형태소 분석
+    okt = Okt()
+
+    naword =[]
+    _naword =[]
+    _naword = okt.pos(wordTxt)
+
+    _naword = twitter.pos(wordTxt)
+        
+    for word, tag in _naword:
+        if tag in ['Noun','Adjective']:
+            naword.append(word)
+    # print(naword)
+
+    for word in en_Nwords:
+        naword.append(word)
+    # print(naword)
+
+    #### 복합어 추가
+    # contents.txt 파일 생성 wordTxt
+    with open('./static/text/contents.txt', 'w', encoding='utf-8') as saveTxt:
+        saveTxt.write(wordTxt)
+     
+    corpus_path = './static/text/contents.txt'
+    sents = DoublespaceLineCorpus(corpus_path, iter_sent=True)
+    
+    noun_extractor = LRNounExtractor_v2(verbose=True)
+    nouns = noun_extractor.train_extract(sents)
+    # print(nouns)
+
+    list(noun_extractor._compounds_components.items())[:100]
+    # naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
+
+    #### START 신조어 추가
+    wordTxtList = [ sentence for sentence in wordTxt.split('\n') if sentence ]
+
+    # 5번 이상 언급된 단어들 중 일부 추출
+    word_extractor = WordExtractor(min_frequency=5,
+                                min_cohesion_forward = 0.05,
+                                min_right_branching_entropy = 0.0)
+
+    word_extractor.train(wordTxtList) # list of str or like
+    words =word_extractor.extract()
+
+    for word in words : 
+        if len(word) < 2:
+            continue
+        subword = word[:-1]
+        if not subword in words:
+            continue
+        if(words[word].leftside_frequency == words[subword].leftside_frequency) : 
+            tmp = words[subword].cohesion_forward + words[word].cohesion_forward
+            if word in stopwords : # 스탑워드에 있는 단어는 낮은 점수 부여
+                # print(word)
+                tmp *= -10
+            words[word] = words[word]._replace(cohesion_forward = 10 + tmp)
+            words[subword] = words[word]._replace(cohesion_forward = 0)
+
+    # 내림차순 점수와 단어 출력
+    print('단어   (빈도수, cohesion, branching entropy)\n')
+    for word, score in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]:
+        print('%s     (%d, %.3f, %.3f)' % (
+            word,
+            score.leftside_frequency,
+            score.cohesion_forward,
+            score.right_branching_entropy
+            )
+        )
+
+    # naword에 단어 추가
+    for word in list(noun_extractor._compounds_components) : # 복합어
+        if word in naword : break
+        naword.append(word)
+        print('+' + word)
+
+    print('********')
+
+    for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]: # 신조어 추정 단어 개수 지정
+        if word[0] in naword : break
+        if ((word[0][-1:]) == '은') or ((word[0][-1:]) == '는') or ((word[0][-1:]) == '을') or ((word[0][-1:]) == '를') or ((word[0][-1:]) == '하') or ((word[0][-1:]) == '의'):
+            if word[0][-1:] in naword : break
+            naword.append(word[0][:-1])
+            print('++' + str(word[0][:-1]))
+        else : 
+            naword.append(word[0])
+            print('+' + str(word[0]))
+
+    # 사용자 단어 추가
+    custom_word_list = ['메타버스', 'DBMS', 'MOU', '애널리틱스', '로보틱스', 'LG유플러스', 'LGU+', 'LG에너지솔루션', 'LGCNS', 'LG화학', '삼성전자', '디지털트랜스포메이션', 'SKT', 'SK쉴더스', 'GS칼텍스', '포스코케미칼',
+    '세일즈포스','하이퍼포스', '랜섬웨어', '액화수소', '폴더블', '스마트폰', '라이다', '네이티브', '협력사', '브리티시볼트', '쿠버네티스', '카카오엔터프라이즈', '컴파스',
+    '노코드','로코드', '5G', 'SK텔레콤', '스마트팩토리', '클로바노트', '네이버웨일']
+    for word in custom_word_list:
+        naword.append(word)
+        print('+' + str(word))
+
+    # 파일로 저장 후 다운로드하여 이름 변경하고 사용하기.
+    # 2번 실행 시 중복으로 입력되니 삭제 후 1회만 실행 필요.
+    # df.to_csv("./static/text/stopwords_KO2.csv", index=False, encoding="utf-8-sig")
+
+    naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
+
+    # print(naword)
+
+    # Counter로 빈도 집계
+    counts = Counter(naword)
+
+    # 복합어에 점수 더하기
+    for word in counts.keys():
+        for e in range(0, len(word)) : 
+            subword = word[:e]
+            if subword in counts.keys() :
+                counts[word] = (counts[word] + counts[subword]*0.6)
+                counts[subword] *= 0.4
+            if(e == 0):
+                continue
+            subword = word[-e:]
+            if subword in counts.keys() :
+                counts[word] = (counts[word] + counts[subword]*0.6)
+                counts[subword] *= 0.4
+
+    #### END 복합어, 신조어 추가
+
+    dict_keywords = counts.most_common(100)
+    
+    mask = np.array(Image.open('./static/image/Circle.JPG'))
+
+    wc = WordCloud(stopwords=stopwords,
+                # font_path=font_name, 
+                font_path=r"D:\Profiles\20220170\Downloads\nanum-all\나눔 글꼴\나눔고딕\NanumFontSetup_TTF_GOTHIC\NanumGothic.ttf", 
+                mask = mask, background_color='white', colormap = 'Set1',
+                max_words=100, max_font_size=125, random_state=87, 
+                width=400, height=400)# mask.shape[0]
+
+    # wc.generate_from_frequencies(dict_keywords)    
+    wc.generate_from_frequencies(dict(dict_keywords))
+    
+    # wc.generate(wordTxt)
+    fig = plt.figure(figsize = (10,10))
+    plt.imshow(wc, interpolation="bilinear")
+    plt.axis('off')
+    # plt.show()
+    
+    output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\wc images"
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+    wc.to_file(path.join(output_path, 'wc_' + timestr + '.png'))
+    # plt.close()
+
+    # dict_source_list
+    # return render(
+    #     request, 'main.html',
+    #     { 'dict': dict_keywords,
+    #      'source_dict' : source_keywords
+    #     }
+    # )
+
+    return HttpResponse('<h3>Word Cloud v.2 has been successfully generated. <br> Check your output file directory: ' 
+        + output_path
+        + '</h3>')
+

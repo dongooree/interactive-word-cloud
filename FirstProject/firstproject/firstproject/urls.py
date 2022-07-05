@@ -19,7 +19,11 @@ from board import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('home/', views.home, name="home"),
     path('main/', views.main),
+    path('main_new/', views.main_new),
+    path('crawling_today_mk/', views.crawling_today_mk, name="mk"),
+    path('crawling_today_hk/', views.crawling_today_hk, name="hk"),
     path('test/', views.test),
     path('board/', include('board.urls'))
 ]

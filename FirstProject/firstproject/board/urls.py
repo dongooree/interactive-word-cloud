@@ -18,6 +18,8 @@ from . import views
 
 urlpatterns = [
     path('main/', views.main),
+    path('main_new/', views.main_new),
+    path('home/', views.home, name="home"),
     path('insert/', views.insert),
     path('test/', views.test),
     path('wordcloud_pdf/', views.wordcloud_pdf),
