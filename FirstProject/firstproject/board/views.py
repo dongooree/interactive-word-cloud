@@ -73,16 +73,28 @@ t = time.time()
 driver.set_page_load_timeout(10)
 
 url_list = [
-
+    'https://www.etnews.com/20220708000014',
+    'https://www.etnews.com/20220707000059',
+    'https://n.news.naver.com/mnews/article/003/0011292661?sid=105',
+    'https://www.mk.co.kr/news/it/view/2022/07/595954/',
+    'https://n.news.naver.com/mnews/article/138/0002128188?sid=105',
+    'https://n.news.naver.com/mnews/article/293/0000039720?sid=105',
+    'https://n.news.naver.com/mnews/article/421/0006204184?sid=105'
 ]
+
+datetype_today = datetime.today()
+today = datetype_today.strftime('%Y.%m.%d')
+
 mk_url_list = []
 hk_url_list = []
+url_dict = dict()
+ja_url_dict = dict()
 
+press_name = ""
 
 ## 사용자 사전에 명사 등록
 twitter = Twitter()
-twitter.add_dictionary(
-    ['메타버스', 'DBMS'], 'Noun')
+twitter.add_dictionary(['메타버스', 'DBMS'], 'Noun')
 
 # 불용어 사전 - 파일 읽어서 등록
 global stopwords
@@ -105,11 +117,12 @@ def word_score(score):
     return ((score.cohesion_forward * 10) * (math.exp(score.right_branching_entropy + 0.5)))
 
 ### 매일경제 IT/과학 -> IT/인터넷 오늘자 기사 크롤링
-today = datetime.today().strftime('%Y.%m.%d')
-print("----------- today: ", today)    
+datetype_today = datetime.today()
+today = datetype_today.strftime('%Y.%m.%d')
+print("-------------------------------------- today: ", today)    
 
 def get_mk_href(soup):
-    global today, url_list, mk_url_list
+    global datetype_today, today, url_list, mk_url_list
     # soup에 저장되어 있는 각 기사에 접근할 수 있는 href들을 담은 리스트를 반환
 
     # dl = soup.find("dl", class_="article_list")
@@ -138,24 +151,24 @@ def get_mk_href(soup):
 
     return mk_url_list
 
+# 매일경제
 def crawling_today_mk(request):
-    global mk_url_list, today, url_list
-    list_href = []
-    breaker = False
+    global today, url_list, url_dict, press_name
+    url_list = []
     mk_url_list = []
+    mk_url_dict = dict()
+    press_name = "매일경제"
+    breaker = False
     url = "https://www.mk.co.kr/news/it/internet/"
     # url = "https://www.mk.co.kr/news/it/?page=1"
 
+    datetype_today = datetime.strptime(today, "%Y.%m.%d")
     # 매경 - 하루에 4페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
     for page in range(4):
         curr_url = "https://www.mk.co.kr/news/it/internet/?page=" + str(page)
-        # raw = requests.get(curr_url, verify=False)
-
-        print("----------- target url: ", curr_url)
-
+        print("----------- 매일경제 target url: ", curr_url)
         result = requests.get(curr_url, verify=False)
         soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
-
         # list_href = get_mk_href(soup)
 
         # soup에 저장되어 있는 각 기사에 접근할 수 있는 href들을 담은 리스트를 반환
@@ -163,37 +176,39 @@ def crawling_today_mk(request):
         for news in soup.find("div", class_="list_area").find_all("dl"):
             date = news.find("dd", class_="desc").find("span", class_="date")
             date = date.get_text()[:10]
-            
             # 날짜 수동 입력해서 테스트 (리스트가 최신순 정렬 안돼있을 때도 있음)
             # c_today = '2022.07.04'
             # if date != c_today:
-            if date != today: 
+            article_date = datetime.strptime(date, "%Y.%m.%d")
+            if datetype_today.day - article_date.day > 1:
+            # if date != today: 
                 breaker = True 
                 break
-
-            dt = news.find("dt", class_="tit")
-            url = dt.find("a")["href"]
-            title = dt.get_text()
-            # print(title)
-            # print(url)
-
-            mk_url_list.append(url)
-            # print(date)
-            # print()
+            elif date == today:
+                dt = news.find("dt", class_="tit")
+                article_href = dt.find("a")["href"]
+                article_title = dt.get_text()
+                # print(article_title)
+                # print(article_href)
+                # print()
+                mk_url_dict[article_title] = article_href   # key=제목, value=링크 형식의 dict로 저장
+                # mk_url_list.append(url)
+                # print()
             
-        # if list_href == 0:
-        #     break
-        # print(list_href)
         if breaker == True:
             break
     
-    print(mk_url_list)
+    # print(mk_url_list)
+    # url_list = mk_url_list
+    url_dict = mk_url_dict
+    return wordcloud_url(request)
 
-    return wordcloud_url(request, mk_url_list)
-
+# 한국경제
 def crawling_today_hk(request):
-    global hk_url_list, today, url_list
-    list_href = []
+    global hk_url_list, today, url_list, url_dict, press_name
+    url_list = []
+    hk_url_dict = dict()
+    press_name = "한국경제"
     breaker = False
     url = "https://www.hankyung.com/it?date=" + today
     liTags_in_ul = [] 
@@ -215,12 +230,64 @@ def crawling_today_hk(request):
             article = li.find("div", class_="article").find("h3", class_="tit")
             article_href = article.find("a")["href"]
             article_title = article.find("a").get_text()
-            # print(article_href)     # 기사 링크
-            # print(article_title)    # 기사 제목
-            hk_url_list.append(article_href)
+            print(article_href)     # 기사 링크
+            print(article_title)    # 기사 제목
+            print()
+            hk_url_dict[article_title] = article_href   # key=제목, value=링크 형식의 dict로 저장
+            # hk_url_list.append(article_href)
             # print()
 
-    return wordcloud_url(request, hk_url_list)
+    print(hk_url_dict)
+    url_dict = hk_url_dict
+    # return wordcloud_url(request, hk_url_list)
+    return wordcloud_url(request)
+
+# 중앙일보 - 경제 - IT/과학
+def crawling_today_ja(request):
+    global today, url_list, url_dict, press_name
+    url_list = []
+    ja_url_list = []
+    ja_url_dict = dict()
+    press_name = "중앙일보"
+    breaker = False
+    url = "https://www.joongang.co.kr/money/science/"
+    liTags_in_ul = [] 
+    # 중앙 - 하루에 1~2페이지. 페이징이 스크롤(더보기) 형식. page1부터.
+    for page in range(1, 4):   
+        curr_url = "https://www.joongang.co.kr/money/science?page=" + str(page)
+        print("----------- 중앙일보 target url: ", curr_url)
+        result = requests.get(curr_url, verify=False)
+        soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
+        section = soup.find("ul", class_="story_list")
+        news_cards = section.find_all("div", class_="card_body")
+
+        for card in news_cards:
+            date = card.find("div", class_="meta").find("p", class_="date")
+            date = date.get_text()[:10]
+            # 날짜 수동 입력해서 테스트 (리스트가 최신순 정렬 안돼있을 때도 있음)
+            # c_today = '2022.07.04'
+            # if date != c_today:
+            if date != today: 
+                breaker = True 
+                break
+            # print(date)
+            article = card.find("h2", class_="headline")
+            article_title = article.find("a").get_text()
+            article_href = article.find("a")["href"]
+            # print(article_title, end="")    # 기사 제목
+            # print(article_href)     # 기사 링크
+            ja_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
+            # ja_url_list.append(article_href)
+            # print()
+
+        if breaker == True:
+            break
+    # url_list = ja_url_list
+    url_dict = ja_url_dict
+    # print("url list : ", url_list)
+    # return wordcloud_url(request, ja_url_list)
+    return wordcloud_url(request)
+
 
 def read_file_textract(filepath):
     text = textract.process(filepath)
@@ -326,9 +393,12 @@ def makeAll(url):
     elif 'mk.co.kr' in url : 
         _cont = driver.find_element(By.CLASS_NAME, 'art_txt')
     elif 'hankyung' in url : 
+        time.sleep(2)
         _cont = driver.find_element(By.ID, 'articletxt')
     elif 'naver' in url : 
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
+    elif 'joongang' in url : 
+        _cont = driver.find_element(By.ID, 'article_body')
     else :
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
     end = time.time()
@@ -435,26 +505,34 @@ def main(request):
     wc.to_file(path.join(output_path, 'wc_' + timestr + '.png'))
     # plt.close()
 
-    # dict_source_list
-    # return render(
-    #     request, 'main.html',
-    #     { 'dict': dict_keywords,
-    #      'source_dict' : source_keywords
-    #     }
-    # )
-
     return HttpResponse('<h3>Word Cloud has been successfully generated. <br> Check your output file directory: ' 
         + output_path
         + '</h3>')
     
-def wordcloud_url(request, urls):
+def wordcloud_url(request):
+    global stopwords, url_list, url_dict, press_name
+    urls = url_list
+    
+    wFileName = r'D:\\Profiles\\20220170\\Desktop\\뉴스레터\\DXletter_contents\\' + today + '.txt'
+    if os.path.isfile(wFileName):    
+        os.remove(wFileName)
     all_keywords = []
     dict_keywords = []
+    # 
+    # --- list 버전
+    # print("기사 리스트: ", urls)
+    # print("기사 개수: ", len(urls))
     source_keywords = defaultdict(list)
-    
-    # global url_list
+    # test_urls = ['https://www.hankyung.com/it/article/202207069766Y', 'https://www.hankyung.com/it/article/202207069745i']
+    # for url in test_urls:
+    # for url in urls:
 
-    for url in urls:
+    # --- dict 버전 (제목:링크)
+    print("기사 리스트: ", url_dict.values())
+    print("기사 개수: ", len(url_dict.items()))
+    # source_keywords = defaultdict(dict)
+    for title, url in url_dict.items():
+    # for url in urls:
         # url에서 텍스트를 추출
         print(f'Parsing url: {url}')
         wordTxt = makeAll(url)     # 가공 전 기사 text를 return
@@ -482,53 +560,142 @@ def wordcloud_url(request, urls):
 
         naword =[]
         _naword =[]
-        # _naword = okt.pos(wordTxt)
-        _naword = twitter.pos(wordTxt)
+        _naword = okt.pos(wordTxt)
+        # _naword = twitter.pos(wordTxt)
         for word, tag in _naword:
             if tag in ['Noun','Adjective']:
                 naword.append(word)
-        # print(naword)
 
         for word in en_Nwords:
             naword.append(word)
-        # print(naword)
-
-        # 한국어 + 영어 명사 추출 후 불용어 제거
-        # 한글 stopwords txt 읽어서 추가
-        stopwords = set(STOPWORDS)
-        st_file_path = './static/text/stopwords_KO.txt'
-        with open(st_file_path, "r", encoding="UTF-8") as f:
-            lines = f.read().splitlines()
-
-        for stw in lines:
-            stopwords.add(stw)
 
         # Stopwords Customizing
-        # target_stop = ['https', 'all', 'article', 'copyright', 'print', 'etnews', 'mnews', 'news']
-        # for t in target_stop:
-        #     stopwords.add(t)
+        target_stop = ['https', 'all', 'article', 'copyright', 'print', 'etnews', 'mnews', 'news']
+        for t in target_stop:
+            stopwords.add(t)
+
+        #### 복합어 추가 시작
+        # contents.txt 파일 생성 wordTxt
+        with open(wFileName, 'a+', encoding='utf-8') as saveTxt:
+            saveTxt.write(wordTxt)
         
+        # corpus_path = './static/text/contents.txt'
+        # sents = DoublespaceLineCorpus(corpus_path, iter_sent=True)
+        sents = DoublespaceLineCorpus(wFileName, iter_sent=True)
+        
+        noun_extractor = LRNounExtractor_v2(verbose=True)
+        nouns = noun_extractor.train_extract(sents)
+        # print(nouns)
+
+        list(noun_extractor._compounds_components.items())[:100]
+        # naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
+
+        #### START 신조어 추가
+        wordTxtList = [ sentence for sentence in wordTxt.split('\n') if sentence ]
+
+        # 5번 이상 언급된 단어들 중 일부 추출
+        word_extractor = WordExtractor(min_frequency=5,
+                                    min_cohesion_forward = 0.05,
+                                    min_right_branching_entropy = 0.0)
+
+        word_extractor.train(wordTxtList) # list of str or like
+        words =word_extractor.extract()
+
+        for word in words : 
+            if len(word) < 2:
+                continue
+            subword = word[:-1]
+            if not subword in words:
+                continue
+            if(words[word].leftside_frequency == words[subword].leftside_frequency) : 
+                tmp = words[subword].cohesion_forward + words[word].cohesion_forward
+                if word in stopwords : # 스탑워드에 있는 단어는 낮은 점수 부여
+                    # print(word)
+                    tmp *= -10
+                words[word] = words[word]._replace(cohesion_forward = 10 + tmp)
+                words[subword] = words[word]._replace(cohesion_forward = 0)
+
+        # 내림차순 점수와 단어 출력
+        # print('단어   (빈도수, cohesion, branching entropy)\n')
+        # for word, score in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]:
+        #     print('%s     (%d, %.3f, %.3f)' % (
+        #         word,
+        #         score.leftside_frequency,
+        #         score.cohesion_forward,
+        #         score.right_branching_entropy
+        #         )
+        #     )
+
+        # naword에 단어 추가
+        for word in list(noun_extractor._compounds_components) : # 복합어
+            if word in naword : break
+            naword.append(word)
+            # print('+' + word)
+
+        # print('********')
+
+        for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]: # 신조어 추정 단어 개수 지정
+            if word[0] in naword : break
+            if ((word[0][-1:]) == '은') or ((word[0][-1:]) == '는') or ((word[0][-1:]) == '을') or ((word[0][-1:]) == '를') or ((word[0][-1:]) == '하') or ((word[0][-1:]) == '의'):
+                if word[0][-1:] in naword : break
+                naword.append(word[0][:-1])
+                # print('++' + str(word[0][:-1]))
+            else : 
+                naword.append(word[0])
+                # print('+' + str(word[0]))
+
+        # 사용자 단어 추가
+        # custom_word_list = ['메타버스', 'DBMS', 'MOU', '로보틱스', 'LG유플러스', 'LGU+', 'LG에너지솔루션', 'LGCNS', 'LG화학', '삼성전자', '디지털트랜스포메이션', 'SKT', 'GS칼텍스', '포스코케미칼',
+        # '세일즈포스','하이퍼포스', '랜섬웨어','라이다', '네이티브', '협력사', '브리티시볼트', '쿠버네티스',
+        # '노코드','로코드', 'SK텔레콤', '스마트팩토리']
+        # for word in custom_word_list:
+        #     naword.append(word)
+            # print('+' + str(word))
+
+        # 파일로 저장 후 다운로드하여 이름 변경하고 사용하기.
+        # 2번 실행 시 중복으로 입력되니 삭제 후 1회만 실행 필요.
+        # df.to_csv("./static/text/stopwords_KO2.csv", index=False, encoding="utf-8-sig")
+
         naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
-        # naword = [i.upper() for i in naword]
 
         # 중복제거된 단어들 - 원본 filename을 저장
         distinct_words = set(naword)
         for word in distinct_words:
-            source_keywords[word].append(url)
-            # source_keywords[word].append(filepath)
-
-        # 한 pdf 다 읽은 뒤 all keywords에 추가
+            # --- list 버전
+            # source_keywords[word].append(url)
+            # --- dict 버전
+            source_keywords[word].append({title:url})
+            
+        # 한 기사 다 읽은 뒤 all keywords에 추가
         all_keywords.extend(naword)
                
+    # print(source_keywords)
     dict_keywords = Counter(all_keywords) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
+
+    # 복합어에 점수 더하기
+    for word in dict_keywords.keys():
+        for e in range(0, len(word)) : 
+            subword = word[:e]
+            if subword in dict_keywords.keys() :
+                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.3)
+                dict_keywords[subword] *= 0.7
+            if(e == 0):
+                continue
+            subword = word[-e:]
+            if subword in dict_keywords.keys() :
+                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.3)
+                dict_keywords[subword] *= 0.7
+
+    #### END 복합어, 신조어 추가
 
     ### dict_keywords
     # 빈도로 내림차순 정렬
     dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
-    dict_keywords = dict(islice(dict_keywords.items(), 200))
-    # print("********** all keywords **************")
-    # print(dict_keywords)
-
+    # dict_keywords = dict(islice(dict_keywords.items(), 200))
+    dict_keywords = dict(islice(dict_keywords.items(), 100))
+    
+    # dict_keywords = dict_keywords.most_common(100)
+    
     dict_keywords = json.dumps(dict_keywords, indent=4, ensure_ascii=False)
     source_keywords = json.dumps(source_keywords, indent=4, ensure_ascii=False)
     # print("원래 dict_keywords: ", dict_keywords)
@@ -539,7 +706,8 @@ def wordcloud_url(request, urls):
     return render(
         request, 'board/wordcloud_url.html',
         { 'dict': dict_keywords,
-         'source_dict' : source_keywords
+         'source_dict' : source_keywords,
+         'press_name' : press_name
         }
     )
 
@@ -639,7 +807,13 @@ def insert(request):
     return HttpResponse('데이터 입력 완료')
 
 def test(request):
-    return HttpResponse('접속이 잘 되네용')
+    # return HttpResponse('접속이 잘 되네용')
+    test = "메롱"
+    return render(
+        request, 'board/test.html',
+        { 'str': test
+        }
+    )
 
 
 # Views
@@ -647,7 +821,7 @@ def main_new(request):
     # 한글 출력 위한 폰트 설치
     # sys_font = fm.findSystemFonts()
     # [f for f in sys_font if 'Nanum' in f]
-    global url_list
+    global url_list, today
     global twitter
     global stopwords, df, NewStopwords, t, driver, options
     font_path = r'D:\\Profiles\\20220170\\AppData\\Local\\Microsoft\\Windows\\Fonts\\NanumGothic.ttf'
@@ -656,6 +830,10 @@ def main_new(request):
     plt.rc('font', family=font_name)
     plt.rcParams["font.family"] = font_name
     # fm._rebuild()
+
+    wFileName = r'D:\\Profiles\\20220170\\Desktop\\뉴스레터\\DXletter_contents\\' + today + '_main_new.txt'
+    if os.path.isfile(wFileName):    
+        os.remove(wFileName)
 
     # print('------------발행내용------------')
 
@@ -692,7 +870,7 @@ def main_new(request):
     _naword =[]
     _naword = okt.pos(wordTxt)
 
-    _naword = twitter.pos(wordTxt)
+    # _naword = twitter.pos(wordTxt)
         
     for word, tag in _naword:
         if tag in ['Noun','Adjective']:
@@ -705,7 +883,7 @@ def main_new(request):
 
     #### 복합어 추가
     # contents.txt 파일 생성 wordTxt
-    with open('./static/text/contents.txt', 'w', encoding='utf-8') as saveTxt:
+    with open(wFileName, 'w', encoding='utf-8') as saveTxt:
         saveTxt.write(wordTxt)
      
     corpus_path = './static/text/contents.txt'
@@ -774,11 +952,11 @@ def main_new(request):
 
     # 사용자 단어 추가
     custom_word_list = ['메타버스', 'DBMS', 'MOU', '애널리틱스', '로보틱스', 'LG유플러스', 'LGU+', 'LG에너지솔루션', 'LGCNS', 'LG화학', '삼성전자', '디지털트랜스포메이션', 'SKT', 'SK쉴더스', 'GS칼텍스', '포스코케미칼',
-    '세일즈포스','하이퍼포스', '랜섬웨어', '액화수소', '폴더블', '스마트폰', '라이다', '네이티브', '협력사', '브리티시볼트', '쿠버네티스', '카카오엔터프라이즈', '컴파스',
-    '노코드','로코드', '5G', 'SK텔레콤', '스마트팩토리', '클로바노트', '네이버웨일']
-    for word in custom_word_list:
-        naword.append(word)
-        print('+' + str(word))
+    '세일즈포스', '랜섬웨어', '스마트폰', '라이다', '네이티브', '협력사', '브리티시볼트', '쿠버네티스',
+    '노코드', '로코드', '5G', '스마트팩토리', "AI"]
+    for cw in custom_word_list:
+        naword.append(cw)
+        print('+' + str(cw))
 
     # 파일로 저장 후 다운로드하여 이름 변경하고 사용하기.
     # 2번 실행 시 중복으로 입력되니 삭제 후 1회만 실행 필요.
@@ -844,3 +1022,5 @@ def main_new(request):
         + output_path
         + '</h3>')
 
+
+# 조선일보 - 경제 - 테크 섹션 URL : https://www.chosun.com/economy/tech_it/?page=1

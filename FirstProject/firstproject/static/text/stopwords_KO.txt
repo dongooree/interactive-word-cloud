@@ -676,7 +676,6 @@
 제공
 사업
 기술력사용
-CO
 면서
 이용
 기자
@@ -701,8 +700,11 @@ copyrights
 현재
 진행
 hankyung
+joongang
+co.kr
 라며
 대해
 올해
 지난해
 분야
+ADVERTISEMENT

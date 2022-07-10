@@ -1,0 +1,30 @@
+
+
+<body>
+    <a href="{% url 'home' %}">HOME</a>
+    <h2>Interactive Word Cloud</h2>
+    <h3 id="date"></h3>
+    <h3>{{ str }}</h3>
+
+    <div style="margin-left: 2rem;">
+        <h3 id="selectedTag"></h3>
+        <h3 id="selectedTagSource"></h3>
+    </div>
+    
+    <div class="chart-area">
+        <div id="container" style="width:80%; height:80%;"></div>
+    </div>
+    <!-- <hr> -->
+    <!-- 
+
+    {% for item in data %}
+        <h3>{{ item.id }} / {{ item.name }}</h3>
+    {% endfor %} -->
+    
+</body>
+<script>
+    var today = new Date();
+    today = today.toLocaleDateString();
+    
+    document.getElementById("date").innerHTML = today;
+</script>

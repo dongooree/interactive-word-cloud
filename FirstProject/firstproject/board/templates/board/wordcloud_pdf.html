@@ -2,7 +2,9 @@
     <script src="https://cdn.anychart.com/releases/v8/js/anychart-base.min.js"></script>
     <script src="https://cdn.anychart.com/releases/v8/js/anychart-tag-cloud.min.js"></script>
     <script>
-        anychart.onDocumentReady(function () {        
+        anychart.onDocumentReady(function () {  
+            var today = new Date();
+            today = today.toLocaleDateString();      
             // keyword dict mapping
             var dicObject = {{ dict|safe }};
             var srcObject = {{ source_dict|safe }};         
@@ -11,6 +13,8 @@
             // }
 
             var testData = [];
+            console.log(srcObject);
+            document.getElementById("date").innerHTML = today;
             
             for (var key in dicObject) {
                 testData.push({
@@ -53,6 +57,8 @@
 </header>
 <body>
     <h2>Interactive Word Cloud</h2>
+    
+    <h3 id="date"></h3>
     <div style="margin-left: 2rem;">
         <h3 id="selectedTag"></h3>
         <h3 id="selectedTagSource"></h3>

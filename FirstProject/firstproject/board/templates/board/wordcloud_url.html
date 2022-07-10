@@ -4,22 +4,24 @@
     <script>
         anychart.onDocumentReady(function () {        
             // keyword dict mapping
+            var today = new Date();
+            today = today.toLocaleDateString();
             var dicObject = {{ dict|safe }};
-            var srcObject = {{ source_dict|safe }};         
-            // for (var key in dicObject) {
-            //     console.log("key : " + key +", value : " + dicObject[key]);
-            // }
-
+            var srcObject = {{ source_dict|safe }};  
             var testData = [];
+            // console.log(srcObject);
+            document.getElementById("date").innerHTML = today;
             
             for (var key in dicObject) {
+                // k = (dicObject[key])[0]
                 testData.push({
-                    "x": key.toUpperCase(),
-                    "value": dicObject[key],
-                    source: srcObject[key]
+                    "x": key,
+                    "value": (dicObject[key]),
+                    source: srcObject[key]        
                 });
             }
             
+            // console.log(testData);
             // var chart = anychart.tagCloud(data);
             var chart = anychart.tagCloud(testData);
             chart.angles([0]);
@@ -35,14 +37,17 @@
                 // window.open(url, "_blank");
                 document.getElementById("selectedTag").innerHTML = 'Selected Word: ';
                 document.getElementById("selectedTagSource").innerHTML = 'Sources:<br>';
-
+                document.getElementById("date").innerHTML = today + " 오늘의 뉴스";
                 var selectedTag = e.point.get("x");
                 var selectedTagSource = e.point.get("source");
                 document.getElementById("selectedTag").innerHTML += selectedTag;
-                // console.log(selectedTagSource);
+                // console.log(dicObject);
+                console.log("type of selectedTagSource: " + typeof(selectedTagSource));
                 selectedTagSource.forEach(function (item, index, array) {
-                    document.getElementById("selectedTagSource").innerHTML += '#' + (index + 1) + ' <a href="' + item + '" target="_blank" rel="noopener noreferrer">' + item + '<a><br>';
-                    //console.log(item)
+                    var val = Object.values(item);
+                    var key = Object.keys(item)
+                    // console.log(key, val);
+                    document.getElementById("selectedTagSource").innerHTML += '#' + (index + 1) + ' <a href="' + val + '" target="_blank" rel="noopener noreferrer">' + key + '<a><br>';
                 })                
             });
         });
@@ -51,7 +56,10 @@
 </header>
 <body>
     <a href="{% url 'home' %}">HOME</a>
-    <h2>Interactive Word Cloud</h2>
+    <h2>Interactive Word Cloud - IT</h2>
+    <h3>{{ press_name }}</h3>
+    <h3 id="date"></h3>
+    <hr>
     <div style="margin-left: 2rem;">
         <h3 id="selectedTag"></h3>
         <h3 id="selectedTagSource"></h3>
