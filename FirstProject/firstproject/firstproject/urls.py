@@ -25,6 +25,7 @@ urlpatterns = [
     path('crawling_today_hk/', views.crawling_today_hk, name="hk"),
     path('crawling_today_ja/', views.crawling_today_ja, name="ja"),
     path('crawling_today_mk/', views.crawling_today_mk, name="mk"),
+    path('crawling_today_se/', views.crawling_today_se, name="se"),
     path('test/', views.test),
     path('board/', include('board.urls'))
 ]

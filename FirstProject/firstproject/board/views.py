@@ -2,7 +2,6 @@ import itertools
 from django.shortcuts import render
 from django.http import HttpResponse
 from .models import Curriculum
-
 import os
 from os import path
 import string
@@ -73,13 +72,13 @@ t = time.time()
 driver.set_page_load_timeout(10)
 
 url_list = [
-    'https://www.etnews.com/20220708000014',
-    'https://www.etnews.com/20220707000059',
-    'https://n.news.naver.com/mnews/article/003/0011292661?sid=105',
-    'https://www.mk.co.kr/news/it/view/2022/07/595954/',
-    'https://n.news.naver.com/mnews/article/138/0002128188?sid=105',
-    'https://n.news.naver.com/mnews/article/293/0000039720?sid=105',
-    'https://n.news.naver.com/mnews/article/421/0006204184?sid=105'
+    'https://n.news.naver.com/mnews/article/081/0003285951?sid=105',
+    'https://n.news.naver.com/mnews/article/030/0003029209?sid=105',
+    'https://n.news.naver.com/mnews/article/030/0003029208?sid=105',
+    'https://n.news.naver.com/mnews/article/022/0003713528?sid=105',
+    'https://n.news.naver.com/mnews/article/092/0002261950?sid=105',
+    'https://n.news.naver.com/mnews/article/025/0003208266?sid=105',
+    'https://n.news.naver.com/mnews/article/009/0004989326?sid=101'
 ]
 
 datetype_today = datetime.today()
@@ -177,7 +176,7 @@ def crawling_today_mk(request):
             date = news.find("dd", class_="desc").find("span", class_="date")
             date = date.get_text()[:10]
             # 날짜 수동 입력해서 테스트 (리스트가 최신순 정렬 안돼있을 때도 있음)
-            # c_today = '2022.07.04'
+            # today = '2022.07.10'
             # if date != c_today:
             article_date = datetime.strptime(date, "%Y.%m.%d")
             if datetype_today.day - article_date.day > 1:
@@ -286,6 +285,39 @@ def crawling_today_ja(request):
     url_dict = ja_url_dict
     # print("url list : ", url_list)
     # return wordcloud_url(request, ja_url_list)
+    return wordcloud_url(request)
+
+# 서울신문 - 경제 - IT/인터넷
+def crawling_today_se(request):
+    global se_url_list, today, url_list, url_dict, press_name
+    url_list = []
+    se_url_dict = dict()
+    press_name = "서울신문"
+    breaker = False
+    url = "https://www.seoul.co.kr/news/newsList.php?section=it&date=" + today
+    liTags_in_ul = [] 
+    # 서울신문-경제-IT,인터넷 - 하루에 3개 정도 업로드되고 있음. 페이징은 (더보기) 스크롤 형식
+    # for page in range(1, 5):    
+    href_header = "https://www.seoul.co.kr"
+    curr_url = "https://www.seoul.co.kr/news/newsList.php?section=it&date=" + today
+    print("----------- 서울신문 target url: ", curr_url)
+    result = requests.get(curr_url, verify=False)
+    soup = BeautifulSoup(result.content.decode('utf-8', 'replace'), "html.parser")
+    liTags = soup.find_all("li", class_="S20_List_article")
+
+    for li in liTags:
+        # 한경은 url에 date쿼리 있으므로 날짜검사 생략
+        article = li.find("div", class_="tit")
+        article_href = href_header + article.find("a")["href"]
+        article_title = article.find("a").get_text()
+        print(article_href)     # 기사 링크
+        print(article_title)    # 기사 제목
+        print()
+        se_url_dict[article_title] = article_href   # key=제목, value=링크 형식의 dict로 저장
+        # print()
+
+    print(se_url_dict)
+    url_dict = se_url_dict
     return wordcloud_url(request)
 
 
@@ -399,6 +431,8 @@ def makeAll(url):
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
     elif 'joongang' in url : 
         _cont = driver.find_element(By.ID, 'article_body')
+    elif 'seoul.co.kr' in url : 
+        _cont = driver.find_element(By.ID, 'atic_txt1')
     else :
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
     end = time.time()
@@ -528,15 +562,17 @@ def wordcloud_url(request):
     # for url in urls:
 
     # --- dict 버전 (제목:링크)
+    newsCount = len(url_dict.items())
     print("기사 리스트: ", url_dict.values())
-    print("기사 개수: ", len(url_dict.items()))
+    print("기사 개수: ", newsCount)
+    
     # source_keywords = defaultdict(dict)
     for title, url in url_dict.items():
     # for url in urls:
         # url에서 텍스트를 추출
         print(f'Parsing url: {url}')
         wordTxt = makeAll(url)     # 가공 전 기사 text를 return
-    
+        # driver.close()
         # 심볼 제거
         wordTxt = re.compile(r'[^\w\s]').sub(' ', wordTxt)
         # 한글만 추출
@@ -551,6 +587,11 @@ def wordcloud_url(request):
         for word, pos in tokens_pos :
             if 'NN' in pos or 'JJ' in pos:
                 en_Nwords.append(word)
+        if 'CD' in pos : 
+            tmpPattern = re.compile("[0-9][A-Z]")
+            if tmpPattern.match(word) : 
+                en_Nwords.append(word)
+        print(en_Nwords)
         # print(en_Nwords)
 
         # Okt 함수를 이용해 형태소 분석
@@ -570,13 +611,15 @@ def wordcloud_url(request):
             naword.append(word)
 
         # Stopwords Customizing
-        target_stop = ['https', 'all', 'article', 'copyright', 'print', 'etnews', 'mnews', 'news']
+        target_stop = ['https', 'all', 'article', 'Copyright', 'print', 'etnews', 'mnews', 'news']
         for t in target_stop:
             stopwords.add(t)
 
+        ####### 신조어/복합어 따로 지정해서 관련 단어 추가 및 제거하기
         #### 복합어 추가 시작
         # contents.txt 파일 생성 wordTxt
-        with open(wFileName, 'a+', encoding='utf-8') as saveTxt:
+        # with open(wFileName, 'a+', encoding='utf-8') as saveTxt:
+        with open(wFileName, 'w+', encoding='utf-8') as saveTxt:
             saveTxt.write(wordTxt)
         
         # corpus_path = './static/text/contents.txt'
@@ -616,15 +659,16 @@ def wordcloud_url(request):
                 words[subword] = words[word]._replace(cohesion_forward = 0)
 
         # 내림차순 점수와 단어 출력
-        # print('단어   (빈도수, cohesion, branching entropy)\n')
-        # for word, score in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]:
-        #     print('%s     (%d, %.3f, %.3f)' % (
-        #         word,
-        #         score.leftside_frequency,
-        #         score.cohesion_forward,
-        #         score.right_branching_entropy
-        #         )
-        #     )
+        print('기사: ', title)
+        print('단어   (빈도수, cohesion, branching entropy)\n')
+        for word, score in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]:
+            print('%s     (%d, %.3f, %.3f)' % (
+                word,
+                score.leftside_frequency,
+                score.cohesion_forward,
+                score.right_branching_entropy
+                )
+            )
 
         # naword에 단어 추가
         for word in list(noun_extractor._compounds_components) : # 복합어
@@ -634,23 +678,29 @@ def wordcloud_url(request):
 
         # print('********')
 
-        for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]: # 신조어 추정 단어 개수 지정
-            if word[0] in naword : break
+        #
+        for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:30]: # 신조어 추정 단어 개수 지정
+          # if word[0] in naword : break
+            if len(word[0]) > 1 and ( word[0][-2:] == '에서' or word[0][-2:] == '이다' ) : 
+                naword.append(word[0][:-2])
+                print('++' + str(word[0][:-2]))
+                continue
             if ((word[0][-1:]) == '은') or ((word[0][-1:]) == '는') or ((word[0][-1:]) == '을') or ((word[0][-1:]) == '를') or ((word[0][-1:]) == '하') or ((word[0][-1:]) == '의'):
-                if word[0][-1:] in naword : break
+                # if word[0][-1:] in naword : break
                 naword.append(word[0][:-1])
-                # print('++' + str(word[0][:-1]))
+                print('++' + str(word[0][:-1]))
             else : 
                 naword.append(word[0])
-                # print('+' + str(word[0]))
+                print('+' + str(word[0]))
 
         # 사용자 단어 추가
-        # custom_word_list = ['메타버스', 'DBMS', 'MOU', '로보틱스', 'LG유플러스', 'LGU+', 'LG에너지솔루션', 'LGCNS', 'LG화학', '삼성전자', '디지털트랜스포메이션', 'SKT', 'GS칼텍스', '포스코케미칼',
-        # '세일즈포스','하이퍼포스', '랜섬웨어','라이다', '네이티브', '협력사', '브리티시볼트', '쿠버네티스',
-        # '노코드','로코드', 'SK텔레콤', '스마트팩토리']
-        # for word in custom_word_list:
+        # addWords = "메타버스 블록체인 노코드 스마트팩토리 얼굴인식 음성인식 LG유플러스 디지털트윈 디지털전환 디지털트랜스포메이션"
+        # addWords += " LGCNS LG화학 LG에너지솔루션 LG이노텍 카카오엔터프라이즈 SK텔레콤 비즈니스 삼성SDS"
+        # addWords = set(addWords.split(' '))
+        # for word in addWords:
+        #     # if word in naword : break
         #     naword.append(word)
-            # print('+' + str(word))
+        #     print('+' + str(word))
 
         # 파일로 저장 후 다운로드하여 이름 변경하고 사용하기.
         # 2번 실행 시 중복으로 입력되니 삭제 후 1회만 실행 필요.
@@ -669,22 +719,26 @@ def wordcloud_url(request):
         # 한 기사 다 읽은 뒤 all keywords에 추가
         all_keywords.extend(naword)
                
+    # driver.quit()
     # print(source_keywords)
     dict_keywords = Counter(all_keywords) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
 
     # 복합어에 점수 더하기
     for word in dict_keywords.keys():
-        for e in range(0, len(word)) : 
+        for e in range(1, len(word)) : 
             subword = word[:e]
             if subword in dict_keywords.keys() :
-                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.3)
-                dict_keywords[subword] *= 0.7
-            if(e == 0):
-                continue
+                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.5)
+                dict_keywords[subword] *= 0.5
             subword = word[-e:]
             if subword in dict_keywords.keys() :
-                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.3)
-                dict_keywords[subword] *= 0.7
+                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.5)
+                dict_keywords[subword] *= 0.5
+
+    # count 임의 조정
+    # dict_keywords['개인정보보호'] /= 10
+    # dict_keywords['스마트공장지원'] /= 4
+    # dict_keywords['공장운영'] /= 4
 
     #### END 복합어, 신조어 추가
 
@@ -707,6 +761,7 @@ def wordcloud_url(request):
         request, 'board/wordcloud_url.html',
         { 'dict': dict_keywords,
          'source_dict' : source_keywords,
+         'news_count' : newsCount,
          'press_name' : press_name
         }
     )
@@ -842,6 +897,7 @@ def main_new(request):
     for url in url_list:
         wordTxt += makeAll(url)
 
+    driver.quit()
     # 한달치 기사로 text 만들기
     # wordTxt = open('./static/text/article.txt', "r", encoding="UTF-8").read()
 
@@ -861,6 +917,10 @@ def main_new(request):
     for word, pos in tokens_pos :
         if 'NN' in pos or 'JJ' in pos:
             en_Nwords.append(word)
+        if 'CD' in pos : 
+            tmpPattern = re.compile("[0-9][A-Z]")
+            if tmpPattern.match(word) : 
+                en_Nwords.append(word)
     # print(en_Nwords)
 
     # Okt 함수를 이용해 형태소 분석
@@ -934,16 +994,20 @@ def main_new(request):
 
     # naword에 단어 추가
     for word in list(noun_extractor._compounds_components) : # 복합어
-        if word in naword : break
+        # if word in naword : break
         naword.append(word)
         print('+' + word)
 
     print('********')
 
-    for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]: # 신조어 추정 단어 개수 지정
-        if word[0] in naword : break
+    for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:30]: # 신조어 추정 단어 개수 지정
+        # if word[0] in naword : break
+        if len(word[0]) > 1 and ( word[0][-2:] == '에서' or word[0][-2:] == '이다' ) : 
+            naword.append(word[0][:-2])
+            print('++' + str(word[0][:-2]))
+            continue
         if ((word[0][-1:]) == '은') or ((word[0][-1:]) == '는') or ((word[0][-1:]) == '을') or ((word[0][-1:]) == '를') or ((word[0][-1:]) == '하') or ((word[0][-1:]) == '의'):
-            if word[0][-1:] in naword : break
+            # if word[0][-1:] in naword : break
             naword.append(word[0][:-1])
             print('++' + str(word[0][:-1]))
         else : 
@@ -951,12 +1015,13 @@ def main_new(request):
             print('+' + str(word[0]))
 
     # 사용자 단어 추가
-    custom_word_list = ['메타버스', 'DBMS', 'MOU', '애널리틱스', '로보틱스', 'LG유플러스', 'LGU+', 'LG에너지솔루션', 'LGCNS', 'LG화학', '삼성전자', '디지털트랜스포메이션', 'SKT', 'SK쉴더스', 'GS칼텍스', '포스코케미칼',
-    '세일즈포스', '랜섬웨어', '스마트폰', '라이다', '네이티브', '협력사', '브리티시볼트', '쿠버네티스',
-    '노코드', '로코드', '5G', '스마트팩토리', "AI"]
-    for cw in custom_word_list:
-        naword.append(cw)
-        print('+' + str(cw))
+    # addWords = "메타버스 블록체인 노코드 스마트팩토리 얼굴인식 음성인식 LG유플러스 디지털트윈 디지털전환 디지털트랜스포메이션"
+    # addWords += " LGCNS LG화학 LG에너지솔루션 LG이노텍 카카오엔터프라이즈 SK텔레콤 비즈니스 삼성SDS"
+    # addWords = set(addWords.split(' '))
+    # for word in addWords:
+    #     # if word in naword : break
+    #     naword.append(word)
+    #     print('+' + str(word))    
 
     # 파일로 저장 후 다운로드하여 이름 변경하고 사용하기.
     # 2번 실행 시 중복으로 입력되니 삭제 후 1회만 실행 필요.
@@ -971,17 +1036,20 @@ def main_new(request):
 
     # 복합어에 점수 더하기
     for word in counts.keys():
-        for e in range(0, len(word)) : 
+        for e in range(1, len(word)) : 
             subword = word[:e]
             if subword in counts.keys() :
-                counts[word] = (counts[word] + counts[subword]*0.6)
-                counts[subword] *= 0.4
-            if(e == 0):
-                continue
+                counts[word] = (counts[word] + counts[subword] * 0.8)
+                counts[subword] *= 0.2
             subword = word[-e:]
             if subword in counts.keys() :
-                counts[word] = (counts[word] + counts[subword]*0.6)
-                counts[subword] *= 0.4
+                counts[word] = (counts[word] + counts[subword] * 0.8)
+                counts[subword] *= 0.2
+
+    # count 임의 조정
+    counts['개인정보보호'] /= 10
+    counts['스마트공장지원'] /= 4
+    counts['공장운영'] /= 4
 
     #### END 복합어, 신조어 추가
 

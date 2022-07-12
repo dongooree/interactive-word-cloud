@@ -8,10 +8,14 @@
             today = today.toLocaleDateString();
             var dicObject = {{ dict|safe }};
             var srcObject = {{ source_dict|safe }};  
+            var newsCount = {{ news_count }};  
             var testData = [];
-            // console.log(srcObject);
-            document.getElementById("date").innerHTML = today;
-            
+            document.getElementById("date").innerHTML = today + " 오늘의 뉴스 " + newsCount + "건";
+            // 오늘자 뉴스가 0개라면
+            if (newsCount == 0) {
+                document.getElementById("selectedTag").innerHTML = "게시된 오늘자 뉴스가 없습니다.";
+            }
+
             for (var key in dicObject) {
                 // k = (dicObject[key])[0]
                 testData.push({
@@ -37,7 +41,6 @@
                 // window.open(url, "_blank");
                 document.getElementById("selectedTag").innerHTML = 'Selected Word: ';
                 document.getElementById("selectedTagSource").innerHTML = 'Sources:<br>';
-                document.getElementById("date").innerHTML = today + " 오늘의 뉴스";
                 var selectedTag = e.point.get("x");
                 var selectedTagSource = e.point.get("source");
                 document.getElementById("selectedTag").innerHTML += selectedTag;
