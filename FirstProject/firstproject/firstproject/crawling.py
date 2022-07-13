@@ -1,13 +1,24 @@
+import os
+from selenium import webdriver
+# from webdriver_manager.chrome import ChromDriverManager
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import time
 import sys
 
+options = webdriver.ChromeOptions()
+options.add_argument('--headless')
+options.add_argument('--no-sandbox')
+options.add_argument('--disable-dev-shm-usage')
+
 datetype_today = datetime.today()
 today = datetype_today.strftime('%Y.%m.%d')
 print("----------- today: ", today)    
 url_list = []
+driver = webdriver.Chrome(r'D:\Profiles\20220170\django\interactive-word-cloud\FirstProject\firstproject\chromedriver.exe', options=options) 
 
 def get_href(soup):
     global today
@@ -37,36 +48,72 @@ def get_href(soup):
     return
 
 def main():
-    global se_url_list, today, url_list, url_dict, press_name
-    url_list = []
-    se_url_dict = dict()
-    press_name = "서울신문"
-    breaker = False
-    url = "https://www.seoul.co.kr/news/newsList.php?section=it&date=" + today
-    liTags_in_ul = [] 
-    # 서울신문-경제-IT,인터넷 - 하루에 3개 정도 업로드되고 있음. 페이징은 (더보기) 스크롤 형식
-    # for page in range(1, 5):    
-    href_header = "https://www.seoul.co.kr"
-    curr_url = "https://www.seoul.co.kr/news/newsList.php?section=it&date=" + today
-    print("----------- 서울신문 target url: ", curr_url)
-    result = requests.get(curr_url, verify=False)
-    soup = BeautifulSoup(result.content.decode('utf-8', 'replace'), "html.parser")
-    liTags = soup.find_all("li", class_="S20_List_article")
-
-    for li in liTags:
-        # 한경은 url에 date쿼리 있으므로 날짜검사 생략
-        article = li.find("div", class_="tit")
-        article_href = href_header + article.find("a")["href"]
-        article_title = article.find("a").get_text()
-        print(article_href)     # 기사 링크
-        print(article_title)    # 기사 제목
+    case = 0
+    global today, url_list, url_dict, press_name, driver
+    if case == 0:
+        url_list = []
+        press_name = ""
+        curr_url = "https://sway.office.com/NnBPrJ8MQfFdSxHQ"
+        print("----------- Sway target url: ", curr_url)
+        driver.get(curr_url)
+        driver.implicitly_wait(4)
+        pause = driver.find_element(By.CLASS_NAME, 'autoplayControlButton.ButtonVE')
+        pause.click()
+        container = driver.find_element(By.XPATH, '/html/body/div/div[3]/div[3]/div/div[2]/div/div[1]/div/div/div[3]/div[2]/div/div/div')
+        aTags = container.find_elements(By.TAG_NAME, 'a')
+        print("a 태그 개수: ", len(aTags))
+        for a in aTags:
+            url_list.append(a.get_attribute('href'))
         print()
-        se_url_dict[article_title] = article_href   # key=제목, value=링크 형식의 dict로 저장
-        # print()
 
-    print(se_url_dict)
-    url_dict = se_url_dict
-    # return wordcloud_url(request, hk_url_list)
+    elif case == 1:
+        # 기사 html parsing : _cont = driver.find_element(By.ID, 'articletxt')
+        kh_url_dict = dict()
+        press_name = "경향신문"
+        breaker = False
+        url = "https://www.khan.co.kr/economy/it-electronic/articles?"
+        url_len = len(url)
+        # 경향신문 - 경제 - IT/가전 - 하루에 1~2페이지. page1부터.
+        for page in range(1, 4):   
+            curr_url = "https://www.khan.co.kr/economy/it-electronic/articles" + "?page=" + str(page)
+            print("----------- 경향신문 target url: ", curr_url)
+            driver.get(curr_url)
+            driver.implicitly_wait(2)
+            # cards = driver.find_elements(By.CLASS_NAME, 'story-card-container')
+            ul = driver.find_element(By.ID, 'recentList')
+            liTags_in_ul = ul.find_elements(By.TAG_NAME, 'li')
+            for li in liTags_in_ul:
+                # print(li.text)
+                tit = li.find_element(By.CLASS_NAME, 'tit')
+                aTag = tit.find_element(By.TAG_NAME, 'a')
+
+                article_title = aTag.text
+                article_href = aTag.get_attribute('href')
+                lastSlash = article_href.rindex("/")
+                date = article_href[lastSlash+1:lastSlash+9]
+                article_date = date[:4] + "." + date[4:6] + "." + date[6:]
+                # 오늘자 기사 필터링
+                if article_date != today:
+                    breaker = True
+                    break
+                print(article_date)     # 기사 발행일
+                print(article_title)    # 기사 제목
+                print(article_href)     # 기사 링크
+                print()
+                kh_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
+            
+            if breaker == True:
+                break
+        print(kh_url_dict)
+        url_dict = kh_url_dict
+    else:
+        article_url_paid = "https://www.hankyung.com/it/article/202207011221i"
+        article_url_free = "https://www.hankyung.com/it/article/202207134861g"
+        driver.implicitly_wait(2)
+        driver.get(article_url_paid)
+        article_cont = driver.find_element(By.ID, 'articletxt')
+        print("--- text: ", article_cont.text)
+        print("--- text length: ", len(article_cont.text))
     return
 
 if __name__ == "__main__":

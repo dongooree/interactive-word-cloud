@@ -23,9 +23,12 @@ urlpatterns = [
     path('main/', views.main),
     path('main_new/', views.main_new),
     path('crawling_today_hk/', views.crawling_today_hk, name="hk"),
+    path('crawling_today_cs/', views.crawling_today_cs, name="cs"),
     path('crawling_today_ja/', views.crawling_today_ja, name="ja"),
     path('crawling_today_mk/', views.crawling_today_mk, name="mk"),
+    path('crawling_today_kh/', views.crawling_today_kh, name="kh"),
     path('crawling_today_se/', views.crawling_today_se, name="se"),
+    path('crawling_today_sg/', views.crawling_today_sg, name="sg"),
     path('test/', views.test),
     path('board/', include('board.urls'))
 ]
