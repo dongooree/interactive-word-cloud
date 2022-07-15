@@ -27,6 +27,8 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import pickle
 import re
 from ckonlpy.tag import Twitter
@@ -67,6 +69,7 @@ options.add_argument('--no-sandbox')
 options.add_argument('--disable-dev-shm-usage')
 # driver = webdriver.Chrome('D:/Profiles/20220170/django/chromedriver.exe', options=options) 
 driver = webdriver.Chrome('chromedriver.exe', options=options) 
+driver.implicitly_wait(20)
 
 t = time.time()
 driver.set_page_load_timeout(10)
@@ -107,42 +110,12 @@ def home(request):
 def word_score(score):
     return ((score.cohesion_forward * 10) * (math.exp(score.right_branching_entropy + 0.5)))
 
-### 매일경제 IT/과학 -> IT/인터넷 오늘자 기사 크롤링
 datetype_today = datetime.today()
 today = datetype_today.strftime('%Y.%m.%d')
 print("-------------------------------------- today: ", today)    
 
-def get_mk_href(soup):
-    global datetype_today, today, url_list, mk_url_list
-    # soup에 저장되어 있는 각 기사에 접근할 수 있는 href들을 담은 리스트를 반환
 
-    # dl = soup.find("dl", class_="article_list")
-
-    # for dt in dl.find_all("dt", class_="tit"):
-    #     print(dt.find("a").attrs)
-    for news in soup.find("div", class_="list_area").find_all("dl"):
-        date = news.find("dd", class_="desc").find("span", class_="date")
-        date = date.get_text()[:10]
-        
-        # 날짜 수동 입력해서 테스트 (리스트가 최신순 정렬 안돼있을 때도 있음)
-        # c_today = '2022.07.04'
-        # if date != c_today:
-        if date != today:  
-            break
-        dt = news.find("dt", class_="tit")
-        url = dt.find("a")["href"]
-        title = dt.get_text()
-        # print(title)
-        # print(url)
-
-        mk_url_list.append(url)
-        # print(mk_url_list)
-        # print(date)
-        # print()
-
-    return mk_url_list
-
-# 매일경제
+### 매일경제 IT/과학 -> IT/인터넷 오늘자 기사 크롤링
 def crawling_today_mk(request):
     global today, url_list, url_dict, press_name
     url_list = []
@@ -325,11 +298,11 @@ def crawling_today_sg(request):
     url = "https://www.segye.com/newsList/0101030900000"
     # href_header = "https://www.segye.com"
     # selenium driver 설정
-    driver.implicitly_wait(2)
+    driver.implicitly_wait(10)
         
     # 세계일보 Biz - IT과학 - 하루에 최대 3페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
     for page in range(3):             
-        # driver.implicitly_wait(2)
+        # driver.implicitly_wait(10)
         curr_url = url + "?page=" + str(page)
         print("----------- 세계일보 target url: ", curr_url)
         driver.get(curr_url)
@@ -375,12 +348,12 @@ def crawling_today_cs(request):
 
     # 조선일보 - 테크 - 하루에 최대 3페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
     # selenium driver 설정
-    driver.implicitly_wait(2)
+    driver.implicitly_wait(10)
 
     for page in range(1, 4):       # 조선일보 page 1부터 시작 
         curr_url = url + "?page=" + str(page)             
         print("----------- 조선일보 target url: ", curr_url)    
-        driver.implicitly_wait(2)
+        driver.implicitly_wait(10)
         driver.get(curr_url)
 
         # cards = driver.find_elements(By.CLASS_NAME, 'story-card-container')
@@ -557,7 +530,8 @@ def makeAll(url):
     elif 'mk.co.kr' in url : 
         _cont = driver.find_element(By.CLASS_NAME, 'art_txt')
     elif 'hankyung' in url : 
-        time.sleep(2)
+        # time.sleep(4)
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.ID, 'articletxt')
     elif 'naver' in url : 
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
@@ -577,7 +551,6 @@ def makeAll(url):
     print(f"{end - start:.5f} sec\t\t" + str(len(_cont.text)) + " 자")
     print(_cont.size)
     print('*****')
-    time.sleep(2)
     return _cont.text
 
 # Views
@@ -753,7 +726,7 @@ def wordcloud_url(request):
             naword.append(word)
 
         # Stopwords Customizing
-        target_stop = ['https', 'all', 'article', 'Copyright', 'print', 'etnews', 'mnews', 'news', 'Segye', 'segye', 'hankyung', 'joongang']
+        target_stop = ['https', 'all', 'article', 'Copyrights', 'print', 'etnews', 'mnews', 'news', 'Segye', 'segye', 'hankyung', 'joongang']
         for t in target_stop:
             stopwords.add(t)
 
@@ -1033,6 +1006,7 @@ def main_new(request):
     curr_url = "https://sway.office.com/NnBPrJ8MQfFdSxHQ"
     print("----------- Sway target url: ", curr_url)
     driver.get(curr_url)
+    driver.maximize_window()
     driver.implicitly_wait(4)
     pause = driver.find_element(By.CLASS_NAME, 'autoplayControlButton.ButtonVE')
     pause.click()
@@ -1040,7 +1014,10 @@ def main_new(request):
     aTags = container.find_elements(By.TAG_NAME, 'a')
     print("a 태그 개수: ", len(aTags))
     for a in aTags:
-        url_list.append(a.get_attribute('href'))
+        a_text = a.get_attribute('textContent')
+        print(a_text)
+        a_href = a.get_attribute('href')
+        url_list.append(a_href)
 
     wFileName = r'D:\\Profiles\\20220170\\Desktop\\뉴스레터\\DXletter_contents\\' + today + '_main_new.txt'
     if os.path.isfile(wFileName):    
@@ -1149,10 +1126,10 @@ def main_new(request):
         )
 
     # naword에 단어 추가
-    for word in list(noun_extractor._compounds_components) : # 복합어
-        # if word in naword : break
-        naword.append(word)
-        print('+' + word)
+    # for word in list(noun_extractor._compounds_components) : # 복합어
+    #     # if word in naword : break
+    #     naword.append(word)
+    #     print('+' + word)
 
     print('********')
 
@@ -1172,7 +1149,7 @@ def main_new(request):
 
     # 사용자 단어 추가
     addWords = ""
-    # addWords = " 드론배송 탄소배출 배터리소재 전지소재 2차전지 탄소중립 자율비행 언어분석 로봇주행"
+    # addWords += " 데이터안심구역 전기차 폐기물가스화 백업전략 랜섬디도스 디도스공격 냉각필름 데이터가치평가"
     addWords = set(addWords.split(' '))
     for word in addWords:
         # if word in naword : break
@@ -1195,15 +1172,15 @@ def main_new(request):
         for e in range(1, len(word)) : 
             subword = word[:e]
             if subword in counts.keys() :
-                counts[word] = (counts[word] + counts[subword] * 0.8)
-                counts[subword] *= 0.2
+                counts[word] = (counts[word] + counts[subword] * 0.6)
+                counts[subword] *= 0.4
             subword = word[-e:]
             if subword in counts.keys() :
-                counts[word] = (counts[word] + counts[subword] * 0.8)
-                counts[subword] *= 0.2
+                counts[word] = (counts[word] + counts[subword] * 0.6)
+                counts[subword] *= 0.4
 
     # count 임의 조정
-    counts['클라우드'] /= 10
+    # counts['클라우드'] /= 2
     # counts['금호석유화학'] /= 2
 
     #### END 복합어, 신조어 추가
