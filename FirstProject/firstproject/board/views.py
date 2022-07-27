@@ -1,5 +1,5 @@
 import itertools
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse
 from .models import Curriculum
 import os
@@ -25,9 +25,12 @@ import time
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
+from pyvirtualdisplay import Display
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as economy
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 import pickle
 import re
@@ -61,20 +64,32 @@ NewStopwords = set(NewStopwords.split(' '))
 #         df.loc[idx] = word
 #         idx += 1
 
-# Create your views here.
 
 options = webdriver.ChromeOptions()
-options.add_argument('--headless')
-options.add_argument('--no-sandbox')
-options.add_argument('--disable-dev-shm-usage')
+# AGRESSIVE: options.setPageLoadStrategy(PageLoadStrategy.NONE); // https://www.skptricks.com/2018/08/timed-out-receiving-message-from-renderer-selenium.html
+options.add_argument("start-maximized") # https://stackoverflow.com/a/26283818/1689770
+options.add_argument("enable-automation") # https://stackoverflow.com/a/43840128/1689770
+options.add_argument("--headless") # only if you are ACTUALLY running headless
+options.add_argument("--no-sandbox") # https://stackoverflow.com/a/50725918/1689770
+options.add_argument("--disable-dev-shm-usage") # https://stackoverflow.com/a/50725918/1689770
+options.add_argument("--disable-browser-side-navigation") # https://stackoverflow.com/a/49123152/1689770
+options.add_argument("--disable-gpu") # https://stackoverflow.com/questions/51959986/how-to-solve-selenium-chromedriver-timed-out-receiving-message-from-renderer-exc
+
+options.add_argument("--window-size=1920,1080")
+options.add_argument("--dns-prefetch-disable")
+# This option was deprecated, see https://sqa.stackexchange.com/questions/32444/how-to-disable-infobar-from-chrome
+# options.addArguments("--disable-infobars"); //https://stackoverflow.com/a/43840128/1689770
 # driver = webdriver.Chrome('D:/Profiles/20220170/django/chromedriver.exe', options=options) 
+
 driver = webdriver.Chrome('chromedriver.exe', options=options) 
+driver.set_page_load_timeout(30)
 driver.implicitly_wait(20)
 
+
 t = time.time()
-driver.set_page_load_timeout(10)
 
 url_list = []
+df = pd.DataFrame(columns=['press_name', 'article_date', 'article_title', 'article_href', 'article_content'])
 
 datetype_today = datetime.today()
 today = datetype_today.strftime('%Y.%m.%d')
@@ -335,56 +350,14 @@ def crawling_today_sg(request):
     return wordcloud_url(request)
 
 
-def crawling_today_cs(request):
-    global today, url_dict, press_name
-    cs_url_dict = dict()
-    press_name = "조선일보"
-    breaker = False    
-    url = "https://www.chosun.com/economy/tech_it/"
-    # result = requests.get(curr_url, verify=False)
-    # soup = BeautifulSoup(result.content.decode('utf-8', 'replace'), "html.parser")
-    # cards = soup.find("div", id="main")
-    # print(cards)
-
-    # 조선일보 - 테크 - 하루에 최대 3페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
-    # selenium driver 설정
-    driver.implicitly_wait(10)
-
-    for page in range(1, 4):       # 조선일보 page 1부터 시작 
-        curr_url = url + "?page=" + str(page)             
-        print("----------- 조선일보 target url: ", curr_url)    
-        driver.implicitly_wait(10)
-        driver.get(curr_url)
-
-        # cards = driver.find_elements(By.CLASS_NAME, 'story-card-container')
-        cards = driver.find_elements(By.CLASS_NAME, 'story-card__headline-container')
-        for card in cards:
-            aTag = card.find_element(By.TAG_NAME, 'a')
-
-            article_title = aTag.find_element(By.TAG_NAME, 'span').text
-            article_href = aTag.get_attribute('href')
-            date = article_href[(len(url)):(len(url))+10]
-            article_date = date.replace('/', '.')
-            # 오늘자 기사 필터링
-            if article_date != today:
-                breaker = True
-                break
-            # print(article_date)     # 기사 발행일
-            # print(article_title)    # 기사 제목
-            # print(article_href)     # 기사 링크
-            # print()
-            cs_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
-        
-        if breaker == True:
-            break
-
-    # print(cs_url_dict)
-    url_dict = cs_url_dict
-    return wordcloud_url(request)
-
-def crawling_today_kh(request):
-    global today, url_dict, press_name
+# def crawling_today_kh(request):
+def fetch_kh(request):
+    global today, url_dict, press_name, df
+    datestr = time.strftime("%Y%m%d")
     kh_url_dict = dict()
+    all_keywords = []
+    dict_keywords = []
+    source_keywords = defaultdict(list)
     press_name = "경향신문"
     breaker = False
     url = "https://www.khan.co.kr/economy/it-electronic/articles?"
@@ -414,107 +387,50 @@ def crawling_today_kh(request):
             # print(article_date)     # 기사 발행일
             # print(article_title)    # 기사 제목
             # print(article_href)     # 기사 링크
-            # print()
-            kh_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
+            # 오늘자 기사임을 확인 후 본문까지 가져와서 Data frame으로 저장
+            aTag.send_keys(Keys.CONTROL + "\n")
+            time.sleep(2)
+
+            driver.switch_to.window(driver.window_handles[-1])  #새로 연 탭으로 이동
+            article_content = makeAll(article_href)     
+            if article_content == "":
+                print(article_title, " 는 유료 기사입니다. ----------- ")
+
+            # print(article_content)  # 기사 본문
+            else:
+                df = df.append({'press_name':press_name,
+                    'article_date':article_date,
+                    'article_title':article_title,
+                    'article_href':article_href,
+                    'article_content':article_content},
+                    ignore_index=True)
+
+            # 드라이버 닫고 처음 탭으로 돌아가기
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+
+            # cs_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
         
         if breaker == True:
             break
 
-    print(kh_url_dict)
-    url_dict = kh_url_dict
-    return wordcloud_url(request)
+    driver.close()
+    print("======== df to json ======= \n", df)
+    output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+    timestr = time.strftime("%Y%m%d")
+    df.to_csv(path.join(output_path, press_name + '_' + timestr + '.csv'), header=True, index=True, encoding="utf-8-sig")
 
+    df_to_json(press_name, df)
+    
+    return render(
+        request, 'board/home.html'
+    )
 
-def read_file_textract(filepath):
-    text = textract.process(filepath)
-    return text.decode("utf-8") 
+    # return HttpResponse('<h3>CSV & JSON files have been successfully generated.<br>Check your output file directory: ' 
+    #     + output_path
+    #     + '</h3>')
+            
 
-# Method 2. PyPDF
-def read_file_pypdf(filepath):
-    pdfFileObj = open(filepath,'rb')
-    pdfReader = PyPDF2.PdfFileReader(pdfFileObj)
-    num_pages = pdfReader.numPages
-    text = ""
-    # Read all the pages
-    for pg in range(num_pages):
-        page = pdfReader.getPage(pg)
-        text += page.extractText()
-    return text
-
-# Read file using any of the pdf readers
-def read_file(filepath, use_method = 'textract'):
-    
-    text = ""
-    if not os.path.isfile(filepath):
-        print(f'Invalid file:{filepath}')
-    else:
-        if use_method == 'textract':
-            return read_file_textract(filepath)
-        elif use_method == 'pypdf':
-            return read_file_pypdf(filepath)
-        else:
-            print('Invalid method to read file. Supported formats: "textract" or "pypdf".')
-    
-    return text
-
-def extract_keywords(text, ignore_words = [],
-                     min_word_length = 0,
-                     ignore_numbers = True,
-                     ignore_case = True):
-    # Remove words with special characters
-    filtered_text = ''.join(filter(lambda x:x in string.printable, text))
-    
-    # Create word tokens from the text string
-    tokens = word_tokenize(filtered_text)
-    
-    # List of punctuations to be ignored 
-    punctuations = ['(',')',';',':','[',']',',','.','--','-','#','!','*','"','%']
-    
-    # Get the stopwords list to be ignored
-    stop_words = stopwords.words('english')
-
-    # Convert ignore words from user to lower case
-    ignore_words_lower = [x.lower() for x in ignore_words]
-    
-    # Combine all the words to be ignored
-    all_ignored_words = punctuations + stop_words + ignore_words_lower
-    
-    # Get the keywords list
-    keywords = [word for word in tokens \
-                    if  word.lower() not in all_ignored_words
-                    and len(word) >= min_word_length]    
-
-    # Remove keywords with only digits
-    if ignore_numbers:
-        keywords = [keyword for keyword in keywords if not keyword.isdigit()]
-
-    # Return all keywords in lower case if case is not of significance
-    if ignore_case:
-        keywords = [keyword.lower() for keyword in keywords]
-    
-    return keywords
-
-# Create Word cloud
-def create_word_cloud(keywords, maximum_words = 100, bg = 'white', cmap='Dark2',
-                     maximum_font_size = 256, width = 3000, height = 2000,
-                     random_state = 42, fig_w = 15, fig_h = 10, output_filepath = None):
-    
-    # Convert keywords to dictionary with values and its occurences
-    word_could_dict=Counter(keywords)
-
-    wordcloud = WordCloud(background_color=bg, max_words=maximum_words, colormap=cmap, 
-                          stopwords=STOPWORDS, max_font_size=maximum_font_size,
-                          random_state=random_state, 
-                          width=width, height=height).generate_from_frequencies(word_could_dict)
-    
-    plt.figure(figsize=(fig_w,fig_h))
-    plt.imshow(wordcloud, interpolation="bilinear")
-    plt.axis("off")
-    if output_filepath:
-        plt.savefig(output_filepath, bbox_inches='tight')
-    plt.show()
-    plt.close()
-  
 # 한 기사 parsing
 def makeAll(url):
     start = time.time()
@@ -526,24 +442,32 @@ def makeAll(url):
 
     # from selenium.webdriver.common.by import By
     if 'etnews' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.CLASS_NAME, 'article_txt')
     elif 'mk.co.kr' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.CLASS_NAME, 'art_txt')
     elif 'hankyung' in url : 
         # time.sleep(4)
         driver.implicitly_wait(30)
         _cont = driver.find_element(By.ID, 'articletxt')
     elif 'naver' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
     elif 'joongang' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.ID, 'article_body')
     elif 'seoul.co.kr' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.ID, 'atic_txt1')
     elif 'khan.co.kr' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.ID, 'articleBody')
     elif 'segye.com' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.ID, 'article_txt')
     elif 'chosun' in url : 
+        driver.implicitly_wait(30)
         _cont = driver.find_element(By.CLASS_NAME, 'article-body')
     else :
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
@@ -702,10 +626,10 @@ def wordcloud_url(request):
         for word, pos in tokens_pos :
             if 'NN' in pos or 'JJ' in pos:
                 en_Nwords.append(word)
-        if 'CD' in pos : 
-            tmpPattern = re.compile("[0-9][A-Z]")
-            if tmpPattern.match(word) : 
-                en_Nwords.append(word)
+            if 'CD' in pos : 
+                tmpPattern = re.compile("[0-9][A-Z]")
+                if tmpPattern.match(word) : 
+                    en_Nwords.append(word)
         print(en_Nwords)
         # print(en_Nwords)
 
@@ -1172,12 +1096,12 @@ def main_new(request):
         for e in range(1, len(word)) : 
             subword = word[:e]
             if subword in counts.keys() :
-                counts[word] = (counts[word] + counts[subword] * 0.6)
-                counts[subword] *= 0.4
+                counts[word] = (counts[word] + counts[subword] * 0.8)
+                counts[subword] *= 0.2
             subword = word[-e:]
             if subword in counts.keys() :
-                counts[word] = (counts[word] + counts[subword] * 0.6)
-                counts[subword] *= 0.4
+                counts[word] = (counts[word] + counts[subword] * 0.8)
+                counts[subword] *= 0.2
 
     # count 임의 조정
     # counts['클라우드'] /= 2
@@ -1210,14 +1134,351 @@ def main_new(request):
     wc.to_file(path.join(output_path, 'wc_' + timestr + '.png'))
     # plt.close()
 
-    # dict_source_list
-    # return render(
-    #     request, 'main.html',
-    #     { 'dict': dict_keywords,
-    #      'source_dict' : source_keywords
-    #     }
-    # )
-
     return HttpResponse('<h3>Word Cloud v.2 has been successfully generated. <br> Check your output file directory: ' 
         + output_path
         + '</h3>')
+
+def df_to_json(press_name, df):    
+    global today, url_dict
+    datestr = time.strftime("%Y%m%d")
+    urls = url_list
+    all_keywords = []
+    dict_keywords = []
+    source_keywords = defaultdict(list)
+
+    # --- df 버전
+    newsCount = len(df)
+    print("======== 기사 개수: ", newsCount)
+    for row in df.itertuples():
+        print(row.article_title)
+    print("===================\n")
+
+    # --- dict 버전 (제목:링크)
+    # newsCount = len(url_dict.items())
+    # print("기사 리스트: ", url_dict.values())
+    
+    # for title, url in url_dict.items():
+    for row in df.itertuples():
+        wordTxt = row.article_content
+        
+        # 심볼 제거
+        wordTxt = re.compile(r'[^\w\s]').sub(' ', wordTxt)
+        # 한글만 추출
+        korean = re.compile('[\u3131-\u3163\uac00-\ud7a3]+')
+        parseText= re.sub(korean, '', wordTxt)
+
+        # nltk 함수로 영어 분리
+        en_word = nltk.word_tokenize(parseText)
+        tokens_pos = nltk.pos_tag(en_word)
+        # print(tokens_pos)
+        en_Nwords = []
+        for word, pos in tokens_pos :
+            if 'NN' in pos or 'JJ' in pos:
+                en_Nwords.append(word)
+            if 'CD' in pos : 
+                tmpPattern = re.compile("[0-9][A-Z]")
+                if tmpPattern.match(word) : 
+                    en_Nwords.append(word)
+        print(en_Nwords)
+        # print(en_Nwords)
+
+        # Okt 함수를 이용해 형태소 분석
+        okt = Okt()
+        # nouns = okt.nouns(contents) # 명사만 추출
+        # words = [n for n in nouns if len(n) > 1] # 단어의 길이가 1개인 것은 제외
+
+        naword =[]
+        _naword =[]
+        _naword = okt.pos(wordTxt)
+        # _naword = twitter.pos(wordTxt)
+        for word, tag in _naword:
+            if tag in ['Noun','Adjective']:
+                naword.append(word)
+
+        for word in en_Nwords:
+            naword.append(word)
+
+        # Stopwords Customizing
+        target_stop = ['https', 'all', 'article', 'Copyrights', 'print', 'etnews', 'mnews', 'news', 'Segye', 'segye', 'hankyung', 'joongang']
+        for t in target_stop:
+            stopwords.add(t)
+
+        ####### 신조어/복합어 따로 지정해서 관련 단어 추가 및 제거하기
+        #### 복합어 추가 시작
+        # contents.txt 파일 생성 wordTxt        
+        corpus_path = './static/text/temp_contents.txt'
+        with open(corpus_path, 'w', encoding='utf-8') as saveTxt:
+            saveTxt.write(wordTxt)
+            
+        sents = DoublespaceLineCorpus(corpus_path, iter_sent=True)
+        
+        noun_extractor = LRNounExtractor_v2(verbose=True)
+        nouns = noun_extractor.train_extract(sents)
+        # print(nouns)
+
+        list(noun_extractor._compounds_components.items())[:100]
+        # naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
+
+        #### START 신조어 추가
+        wordTxtList = [ sentence for sentence in wordTxt.split('\n') if sentence ]
+
+        # 5번 이상 언급된 단어들 중 일부 추출
+        word_extractor = WordExtractor(min_frequency=5,
+                                    min_cohesion_forward = 0.05,
+                                    min_right_branching_entropy = 0.0)
+
+        word_extractor.train(wordTxtList) # list of str or like
+        words = word_extractor.extract()
+
+        for word in words : 
+            if len(word) < 2:
+                continue
+            subword = word[:-1]
+            if not subword in words:
+                continue
+            if(words[word].leftside_frequency == words[subword].leftside_frequency) : 
+                tmp = words[subword].cohesion_forward + words[word].cohesion_forward
+                if word in stopwords : # 스탑워드에 있는 단어는 낮은 점수 부여
+                    # print(word)
+                    tmp *= -10
+                words[word] = words[word]._replace(cohesion_forward = 10 + tmp)
+                words[subword] = words[word]._replace(cohesion_forward = 0)
+
+        # 내림차순 점수와 단어 출력
+        print('기사: ', row.article_title)
+        print('단어   (빈도수, cohesion, branching entropy)\n')
+        for word, score in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:100]:
+            print('%s     (%d, %.3f, %.3f)' % (
+                word,
+                score.leftside_frequency,
+                score.cohesion_forward,
+                score.right_branching_entropy
+                )
+            )
+
+        # naword에 단어 추가
+        for word in list(noun_extractor._compounds_components) : # 복합어
+            if word in naword : break
+            naword.append(word)
+            # print('+' + word)
+
+        # print('********')
+
+        #
+        for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:30]: # 신조어 추정 단어 개수 지정
+          # if word[0] in naword : break
+            if len(word[0]) > 1 and ( word[0][-2:] == '에서' or word[0][-2:] == '이다' or word[0][-2:] == '으로' ) : 
+                naword.append(word[0][:-2])
+                print('++' + str(word[0][:-2]))
+                continue
+            if ((word[0][-1:]) == '은') or ((word[0][-1:]) == '는') or ((word[0][-1:]) == '을') or ((word[0][-1:]) == '를') or ((word[0][-1:]) == '하') or ((word[0][-1:]) == '의') or ((word[0][-1:]) == '에') :
+                # if word[0][-1:] in naword : break
+                naword.append(word[0][:-1])
+                print('++' + str(word[0][:-1]))
+            else : 
+                naword.append(word[0])
+                print('+' + str(word[0]))
+
+        # 사용자 단어 추가
+        # addWords = "메타버스 블록체인 노코드 스마트팩토리 얼굴인식 음성인식 LG유플러스 디지털트윈 디지털전환 디지털트랜스포메이션"
+        # addWords += " LGCNS LG화학 LG에너지솔루션 LG이노텍 카카오엔터프라이즈 SK텔레콤 비즈니스 삼성SDS"
+        # addWords = set(addWords.split(' '))
+        # for word in addWords:
+        #     # if word in naword : break
+        #     naword.append(word)
+        #     print('+' + str(word))
+
+        # 파일로 저장 후 다운로드하여 이름 변경하고 사용하기.
+        # 2번 실행 시 중복으로 입력되니 삭제 후 1회만 실행 필요.
+        # df.to_csv("./static/text/stopwords_KO2.csv", index=False, encoding="utf-8-sig")
+
+        naword = [word for word in naword if (not word in stopwords) and len(word) > 1]
+
+        # 중복제거된 단어들 - 원본 filename을 저장
+        distinct_words = set(naword)
+        for word in distinct_words:
+            # --- list 버전
+            # source_keywords[word].append(url)
+            # --- dict 버전
+            source_keywords[word].append({row.article_title:row.article_href})
+            
+        # 한 기사 다 읽은 뒤 all keywords에 추가
+        all_keywords.extend(naword)
+               
+    # driver.quit()
+    # print(source_keywords)
+    dict_keywords = Counter(all_keywords) # 위에서 얻은 words를 처리하여 단어별 빈도수 형태의 딕셔너리 데이터를 구함
+
+    # 복합어에 점수 더하기
+    for word in dict_keywords.keys():
+        for e in range(1, len(word)) : 
+            subword = word[:e]
+            if subword in dict_keywords.keys() :
+                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.7)
+                dict_keywords[subword] *= 0.3
+            subword = word[-e:]
+            if subword in dict_keywords.keys() :
+                dict_keywords[word] = (dict_keywords[word] + dict_keywords[subword]*0.7)
+                dict_keywords[subword] *= 0.3
+
+    # count 임의 조정
+    # dict_keywords['개인정보보호'] /= 10
+
+    #### END 복합어, 신조어 추가
+
+    ### dict_keywords
+    # 빈도로 내림차순 정렬
+    dict_keywords = OrderedDict(sorted(dict_keywords.items(), key = lambda item: item[1], reverse = True))
+    # dict_keywords = dict(islice(dict_keywords.items(), 200))
+    dict_keywords = dict(islice(dict_keywords.items(), 100))
+
+    # json 파일로 저장
+    json_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+
+    with open(path.join(json_path, press_name + '_dictKeywords_' + datestr + '.json'), 'w', encoding='utf-8') as dictOutputFile:
+        json.dump(dict_keywords, dictOutputFile, indent=4, ensure_ascii=False)
+
+    with open(path.join(json_path, press_name + '_sourceKeywords_' + datestr + '.json'), 'w', encoding='utf-8') as sourceOutputFile:
+        json.dump(source_keywords, sourceOutputFile, indent=4, ensure_ascii=False)
+
+    return HttpResponse('<h3>CSV & JSON files have been successfully generated.<br>Check your output file directory: ' 
+        + json_path
+        + '</h3>')
+
+def wordcloud_view(request, press_name):
+    datestr = time.strftime("%Y%m%d")
+    urls = url_list
+    
+    all_keywords = []
+    dict_keywords = []
+    source_keywords = defaultdict(list)
+    # CSV 파일 불러오기
+    filepath = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+    df = pd.read_csv(path.join(filepath, press_name + '_' + datestr + '.csv'))
+    newsCount = len(df)
+
+    # JSON 파일 불러오기
+    json_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+    with open(path.join(json_path, press_name + '_dictKeywords_' + datestr + '.json'), encoding='utf-8') as dictInputFile:
+        dictJson = json.load(dictInputFile)
+
+    with open(path.join(json_path, press_name + '_sourceKeywords_' + datestr + '.json'), encoding='utf-8') as sourceInputFile:
+        sourceJson = json.load(sourceInputFile)
+    
+    return render(
+        request, 'board/wordcloud_url.html',
+        { 'dict': dictJson,
+         'source_dict' : sourceJson,
+         'news_count' : newsCount,
+         'press_name' : press_name
+        }
+    )
+
+
+def fetch_cs(request):
+    global today, url_dict, press_name, df
+    datestr = time.strftime("%Y%m%d")
+    cs_url_dict = dict()
+    all_keywords = []
+    dict_keywords = []
+    source_keywords = defaultdict(list)
+    press_name = "조선일보"
+    breaker = False    
+    url = "https://www.chosun.com/economy/tech_it/"
+    header = "https://www.chosun.com/economy/"
+    # 조선일보 - 테크 - 하루에 최대 3페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
+    # selenium driver 설정
+    # driver.implicitly_wait(20)
+
+    for page in range(1, 4):       # 조선일보 page 1부터 시작 
+        curr_url = url + "?page=" + str(page)             
+        print("----------- Batch 조선일보 target url: ", curr_url)    
+        driver.implicitly_wait(20)
+        driver.get(curr_url)
+        # time.sleep(2)
+
+        # driver.implicitly_wait(10) 
+        wait = WebDriverWait(driver, 30)
+        
+        # wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'story-card__headline-container')))
+        
+        wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'story-card__headline-container')))
+        # WebDriverWait(driver, 100).until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'story-feed')))
+        cards = driver.find_elements(By.CLASS_NAME, 'story-card__headline-container')
+
+        for card in cards:       
+            wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, 'a')))
+            aTag = card.find_element(By.TAG_NAME, 'a')
+
+            article_title = aTag.find_element(By.TAG_NAME, 'span').text
+            article_href = aTag.get_attribute('href')
+            print(article_title)
+            startIndex = article_href.index('/', len(header))
+
+            date = article_href[startIndex+1:startIndex+11]
+            article_date = date.replace('/', '.')
+            print(article_date)
+            # 오늘자 기사 필터링
+            if article_date != today:
+                breaker = True
+                break
+            # print(article_date)     # 기사 발행일
+            # print(article_title)    # 기사 제목
+            # print(article_href)     # 기사 링크
+            # 오늘자 기사임을 확인 후 본문까지 가져와서 Data frame으로 저장
+            aTag.send_keys(Keys.CONTROL + "\n")
+            time.sleep(2)
+
+            driver.switch_to.window(driver.window_handles[-1])  #새로 연 탭으로 이동
+            article_content = makeAll(article_href)     
+            if article_content == "":
+                print(article_title, " 는 유료 기사입니다. ----------- ")
+
+            # print(article_content)  # 기사 본문
+            else:
+                df = df.append({'press_name':press_name,
+                    'article_date':article_date,
+                    'article_title':article_title,
+                    'article_href':article_href,
+                    'article_content':article_content},
+                    ignore_index=True)
+
+            # 드라이버 닫고 처음 탭으로 돌아가기
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+
+            # cs_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
+        
+        if breaker == True:
+            break
+
+    driver.close()
+    print("======== df to json ======= \n", df)
+    output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+    timestr = time.strftime("%Y%m%d")
+    df.to_csv(path.join(output_path, press_name + '_' + timestr + '.csv'), header=True, index=True, encoding="utf-8-sig")
+    # url_dict = cs_url_dict
+
+    df_to_json(press_name, df)
+
+    return render(
+        request, 'board/home.html'
+    )
+
+    # return HttpResponse('<h3>CSV & JSON files have been successfully generated.<br>Check your output file directory: ' 
+    #     + output_path
+    #     + '</h3>')
+
+
+def wordcloud_cs(request):
+    # global stopwords, url_list, url_dict, press_name
+    press_name = "조선일보"
+    return wordcloud_view(request, press_name)
+
+def wordcloud_kh(request):
+    # global stopwords, url_list, url_dict, press_name
+    press_name = "경향신문"
+    return wordcloud_view(request, press_name)
+
+

@@ -48,7 +48,7 @@ def get_href(soup):
     return
 
 def main():
-    case = 0
+    case = 4
     global today, url_list, url_dict, press_name, driver
     if case == 0:
         url_list = []
@@ -106,7 +106,7 @@ def main():
                 break
         print(kh_url_dict)
         url_dict = kh_url_dict
-    else:
+    elif case == 2:
         article_url_paid = "https://www.hankyung.com/it/article/202207011221i"
         article_url_free = "https://www.hankyung.com/it/article/202207134861g"
         driver.implicitly_wait(2)
@@ -114,6 +114,20 @@ def main():
         article_cont = driver.find_element(By.ID, 'articletxt')
         print("--- text: ", article_cont.text)
         print("--- text length: ", len(article_cont.text))
+    elif case == 3:
+        eco = "https://www.chosun.com/economy/economy_general/2022/07/26/ZJEMD7CO3JFD3MF6SJ2EUTSIPE/"
+        it = "https://www.chosun.com/economy/tech_it/2022/07/26/IPV4QDI2TVE4BLZNJ6FKPQYZMI/"
+        header = "https://www.chosun.com/economy/"
+
+        start = it.index('/', len(header))
+        print(start)
+        print(it[start + 1:])
+    else:   
+        driver.implicitly_wait(20)
+        print('------------기사 제목, 발행 신문사------------')
+
+        url = 'https://news.naver.com/main/main.naver?mode=LSD&mid=shm&sid1=105'
+        driver.get(url)
     return
 
 if __name__ == "__main__":
