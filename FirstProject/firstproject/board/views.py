@@ -183,53 +183,97 @@ def crawling_today_mk(request):
     return wordcloud_url(request)
 
 # 한국경제
-def crawling_today_hk(request):
-    global hk_url_list, today, url_dict, press_name
+# def crawling_today_hk(request):
+def fetch_hk(request):
+    global hk_url_list, today, url_dict, press_name, df, driver
+    datestr = time.strftime("%Y%m%d")
     hk_url_dict = dict()
+    all_keywords = []
+    dict_keywords = []
+    source_keywords = defaultdict(list)
     press_name = "한국경제"
     breaker = False
     url = "https://www.hankyung.com/it?date=" + today
     # 한경 - 하루에 4페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
-    for page in range(1, 5):    # 한경 IT섹션은 page 1부터 시작
+    for page in range(1, 6):    # 한경 IT섹션은 page 1부터 시작
         curr_url = url + "&page=" + str(page)
-        # print("----------- 한국경제 target url: ", curr_url)
-        result = requests.get(curr_url, verify=False)
-        soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
-        section = soup.find("ul", class_="news-list")
-        # liTags_in_ul = section.find_all("li")
+        print("----------- 한국경제 target url: ", curr_url)
+        # result = requests.get(curr_url, verify=False)
+        # soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
 
-        conts = section.find_all("div", class_="txt-cont")
+        wait = WebDriverWait(driver, 30)
+        driver.get(curr_url)
+
+        wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'news-list')))
+        section = driver.find_element(By.CLASS_NAME, 'news-list')
+        conts = section.find_elements(By.CLASS_NAME, 'txt-cont')
+
         for cont in conts:
-            date = cont.find("span", class_="txt-date")
-            date = date.get_text()[:10]
+            date = cont.find_element(By.CLASS_NAME, 'txt-date')
+            article_date = date.text[:10]
             # 날짜 수동 입력해서 테스트
             # c_today = '2022.07.04'
             # if date != c_today:
-            if date != today: 
+            if article_date != today: 
                 breaker = True 
                 break
-            article = cont.find("h3", class_="news-tit")
-            article_title = article.find("a").get_text()
-            article_href = article.find("a")["href"]
-            # print(article_title)    # 기사 제목
-            # print(article_href)     # 기사 링크
-            # print(date)             # 기사 날짜
-            # print()
-            hk_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
+            article = cont.find_element(By.CLASS_NAME, 'news-tit')
+            aTag = article.find_element(By.TAG_NAME, 'a')
+            if aTag.get_attribute('data-pm') == "Y":
+                continue
+            article_title = aTag.text
+            article_href = aTag.get_attribute('href')
 
+            # 오늘자 기사임을 확인 후 본문까지 가져와서 Data frame으로 저장
+            aTag.send_keys(Keys.CONTROL + "\n")
+            time.sleep(2)
+
+            driver.switch_to.window(driver.window_handles[-1])  #새로 연 탭으로 이동
+            article_content = makeAll(article_href)     
+            if article_content == "":
+                print(article_title, " 는 유료 기사입니다. ----------- ")
+            else:
+                df = df.append({'press_name':press_name,
+                    'article_date':article_date,
+                    'article_title':article_title,
+                    'article_href':article_href,
+                    'article_content':article_content},
+                    ignore_index=True)
+
+            print(article_title, end="")    # 기사 제목
+            print(article_href)     # 기사 링크
+            print(article_date)     # 기사 날짜
+            
+            # 드라이버 닫고 처음 탭으로 돌아가기
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+            
         if breaker == True:
             break
 
-    print(hk_url_dict)
-    url_dict = hk_url_dict
-    return wordcloud_url(request)
+    driver.close()
+    print("======== df to json ======= \n", df)
+    output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+    timestr = time.strftime("%Y%m%d")
+    df.to_csv(path.join(output_path, press_name + '_' + timestr + '.csv'), header=True, index=True, encoding="utf-8-sig")
+    # url_dict = cs_url_dict
+
+    df_to_json(press_name, df)
+
+    return render(
+        request, 'board/home.html'
+    )
+
 
 # 중앙일보 - 경제 - IT/과학
-def crawling_today_ja(request):
-    global today, url_list, url_dict, press_name
-    url_list = []
-    ja_url_list = []
+# def crawling_today_ja(request):
+def fetch_ja(request):
+    global today, url_list, url_dict, press_name, driver, df
+    datestr = time.strftime("%Y%m%d")
     ja_url_dict = dict()
+    all_keywords = []
+    dict_keywords = []
+    source_keywords = defaultdict(list)
     press_name = "중앙일보"
     breaker = False
     url = "https://www.joongang.co.kr/money/science/"
@@ -238,37 +282,73 @@ def crawling_today_ja(request):
     for page in range(1, 4):   
         curr_url = "https://www.joongang.co.kr/money/science?page=" + str(page)
         print("----------- 중앙일보 target url: ", curr_url)
-        result = requests.get(curr_url, verify=False)
-        soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
-        section = soup.find("ul", class_="story_list")
-        news_cards = section.find_all("div", class_="card_body")
+           
+        driver.implicitly_wait(20)
+        driver.get(curr_url)
+        
+        wait = WebDriverWait(driver, 30)
+        wait.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'story_list')))
+        section = driver.find_element(By.CLASS_NAME, 'story_list')
+        # result = requests.get(curr_url, verify=False)
+        # soup = BeautifulSoup(result.content, "html.parser", from_encoding='utf-8')
+        # section = soup.find("ul", class_="story_list")
+        news_cards = section.find_elements(By.CLASS_NAME, 'card_body')
 
         for card in news_cards:
-            date = card.find("div", class_="meta").find("p", class_="date")
-            date = date.get_text()[:10]
+            date = card.find_element(By.CLASS_NAME, 'meta').find_element(By.CLASS_NAME, 'date')
+            article_date = date.text[:10]
+            print(article_date)
             # 날짜 수동 입력해서 테스트 (리스트가 최신순 정렬 안돼있을 때도 있음)
             # c_today = '2022.07.04'
             # if date != c_today:
-            if date != today: 
+            if article_date != today: 
                 breaker = True 
                 break
             # print(date)
-            article = card.find("h2", class_="headline")
-            article_title = article.find("a").get_text()
-            article_href = article.find("a")["href"]
+            article = card.find_element(By.CLASS_NAME, 'headline')
+            aTag = article.find_element(By.TAG_NAME, 'a')
+            article_title = aTag.text
+            article_href = aTag.get_attribute('href')
+
+            # 오늘자 기사임을 확인 후 본문까지 가져와서 Data frame으로 저장
+            aTag.send_keys(Keys.CONTROL + "\n")
+            time.sleep(2)
+
+            driver.switch_to.window(driver.window_handles[-1])  #새로 연 탭으로 이동
+            article_content = makeAll(article_href)     
+            if article_content == "":
+                print(article_title, " 는 유료 기사입니다. ----------- ")
+            else:
+                df = df.append({'press_name':press_name,
+                    'article_date':article_date,
+                    'article_title':article_title,
+                    'article_href':article_href,
+                    'article_content':article_content},
+                    ignore_index=True)
+
             # print(article_title, end="")    # 기사 제목
             # print(article_href)     # 기사 링크
-            ja_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
-            # ja_url_list.append(article_href)
-            # print()
-
+            # ja_url_dict[article_title] = article_href   # key=제목, value=링크인 dict로 저장
+            
+            # 드라이버 닫고 처음 탭으로 돌아가기
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+            
         if breaker == True:
             break
-    # url_list = ja_url_list
-    url_dict = ja_url_dict
-    # print("url list : ", url_list)
-    # return wordcloud_url(request, ja_url_list)
-    return wordcloud_url(request)
+
+    driver.close()
+    print("======== df to json ======= \n", df)
+    output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+    timestr = time.strftime("%Y%m%d")
+    df.to_csv(path.join(output_path, press_name + '_' + timestr + '.csv'), header=True, index=True, encoding="utf-8-sig")
+    # url_dict = cs_url_dict
+
+    df_to_json(press_name, df)
+
+    return render(
+        request, 'board/home.html'
+    )
 
 # 서울신문 - 경제 - IT/인터넷
 def crawling_today_se(request):
@@ -313,7 +393,7 @@ def crawling_today_sg(request):
     url = "https://www.segye.com/newsList/0101030900000"
     # href_header = "https://www.segye.com"
     # selenium driver 설정
-    driver.implicitly_wait(10)
+    driver.implicitly_wait(30)
         
     # 세계일보 Biz - IT과학 - 하루에 최대 3페이지 정도 올라올 것으로 가정하고 범위 설정. (cf. view상 1페이지는 page=0)
     for page in range(3):             
@@ -352,7 +432,7 @@ def crawling_today_sg(request):
 
 # def crawling_today_kh(request):
 def fetch_kh(request):
-    global today, url_dict, press_name, df
+    global today, url_dict, press_name, df, driver
     datestr = time.strftime("%Y%m%d")
     kh_url_dict = dict()
     all_keywords = []
@@ -367,7 +447,9 @@ def fetch_kh(request):
         curr_url = "https://www.khan.co.kr/economy/it-electronic/articles" + "?page=" + str(page)
         print("----------- 경향신문 target url: ", curr_url)
         driver.get(curr_url)
+        wait = WebDriverWait(driver, 30)
 
+        wait.until(EC.presence_of_all_elements_located((By.ID, 'recentList')))
         ul = driver.find_element(By.ID, 'recentList')
         liTags_in_ul = ul.find_elements(By.TAG_NAME, 'li')
 
@@ -440,6 +522,7 @@ def makeAll(url):
         driver.execute_script("window.stop();")
     print('Time consuming:', time.time() - t)
 
+    wait = WebDriverWait(driver, 30)
     # from selenium.webdriver.common.by import By
     if 'etnews' in url : 
         driver.implicitly_wait(30)
@@ -449,13 +532,16 @@ def makeAll(url):
         _cont = driver.find_element(By.CLASS_NAME, 'art_txt')
     elif 'hankyung' in url : 
         # time.sleep(4)
-        driver.implicitly_wait(30)
-        _cont = driver.find_element(By.ID, 'articletxt')
+        driver.implicitly_wait(60)
+        if wait.until(EC.presence_of_all_elements_located((By.ID, 'articletxt'))):
+            _cont = driver.find_element(By.ID, 'articletxt')
+        else:
+            _cont = driver.find_element(By.ID, 'article-body')
     elif 'naver' in url : 
         driver.implicitly_wait(30)
         _cont = driver.find_element(By.CLASS_NAME, '_article_content')
     elif 'joongang' in url : 
-        driver.implicitly_wait(30)
+        wait.until(EC.presence_of_all_elements_located((By.ID, 'article_body')))
         _cont = driver.find_element(By.ID, 'article_body')
     elif 'seoul.co.kr' in url : 
         driver.implicitly_wait(30)
@@ -1057,7 +1143,7 @@ def main_new(request):
 
     print('********')
 
-    for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:30]: # 신조어 추정 단어 개수 지정
+    for word in sorted(words.items(), key=lambda x:word_score(x[1]), reverse=True)[:50]: # 신조어 추정 단어 개수 지정
         # if word[0] in naword : break
         if len(word[0]) > 1 and ( word[0][-2:] == '에서' or word[0][-2:] == '이다' ) : 
             naword.append(word[0][:-2])
@@ -1375,7 +1461,6 @@ def wordcloud_view(request, press_name):
         }
     )
 
-
 def fetch_cs(request):
     global today, url_dict, press_name, df
     datestr = time.strftime("%Y%m%d")
@@ -1470,15 +1555,30 @@ def fetch_cs(request):
     #     + output_path
     #     + '</h3>')
 
+def fetch_all(request):
+    fetch_cs(request)   # 조선일보
+    driver.close()
+    fetch_ja(request)   # 중앙일보
+    driver.close()
+    fetch_kh(request)   # 경향신문
+    driver.close()
 
+    return
+
+######
 def wordcloud_cs(request):
     # global stopwords, url_list, url_dict, press_name
     press_name = "조선일보"
     return wordcloud_view(request, press_name)
 
-def wordcloud_kh(request):
-    # global stopwords, url_list, url_dict, press_name
-    press_name = "경향신문"
+def wordcloud_ja(request):
+    press_name = "중앙일보"
     return wordcloud_view(request, press_name)
 
+def wordcloud_hk(request):
+    press_name = "한국경제"
+    return wordcloud_view(request, press_name)
 
+def wordcloud_kh(request):
+    press_name = "경향신문"
+    return wordcloud_view(request, press_name)
