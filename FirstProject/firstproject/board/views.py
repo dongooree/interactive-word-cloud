@@ -4,6 +4,7 @@ from django.http import HttpResponse
 from .models import Curriculum
 import os
 from os import path
+import glob
 import string
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
@@ -186,6 +187,8 @@ def crawling_today_mk(request):
 # def crawling_today_hk(request):
 def fetch_hk(request):
     global hk_url_list, today, url_dict, press_name, df, driver
+    
+    df = pd.DataFrame(columns=['press_name', 'article_date', 'article_title', 'article_href', 'article_content'])
     datestr = time.strftime("%Y%m%d")
     hk_url_dict = dict()
     all_keywords = []
@@ -251,7 +254,6 @@ def fetch_hk(request):
         if breaker == True:
             break
 
-    driver.close()
     print("======== df to json ======= \n", df)
     output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
     timestr = time.strftime("%Y%m%d")
@@ -259,6 +261,8 @@ def fetch_hk(request):
     # url_dict = cs_url_dict
 
     df_to_json(press_name, df)
+
+    # df 초기화
 
     return render(
         request, 'board/home.html'
@@ -269,6 +273,8 @@ def fetch_hk(request):
 # def crawling_today_ja(request):
 def fetch_ja(request):
     global today, url_list, url_dict, press_name, driver, df
+    
+    df = pd.DataFrame(columns=['press_name', 'article_date', 'article_title', 'article_href', 'article_content'])
     datestr = time.strftime("%Y%m%d")
     ja_url_dict = dict()
     all_keywords = []
@@ -337,7 +343,6 @@ def fetch_ja(request):
         if breaker == True:
             break
 
-    driver.close()
     print("======== df to json ======= \n", df)
     output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
     timestr = time.strftime("%Y%m%d")
@@ -433,6 +438,8 @@ def crawling_today_sg(request):
 # def crawling_today_kh(request):
 def fetch_kh(request):
     global today, url_dict, press_name, df, driver
+    
+    df = pd.DataFrame(columns=['press_name', 'article_date', 'article_title', 'article_href', 'article_content'])    
     datestr = time.strftime("%Y%m%d")
     kh_url_dict = dict()
     all_keywords = []
@@ -496,7 +503,6 @@ def fetch_kh(request):
         if breaker == True:
             break
 
-    driver.close()
     print("======== df to json ======= \n", df)
     output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
     timestr = time.strftime("%Y%m%d")
@@ -564,7 +570,7 @@ def makeAll(url):
     return _cont.text
 
 # Views
-def main(request):
+def monthly(request):
     # 한글 출력 위한 폰트 설치
     # sys_font = fm.findSystemFonts()
     # [f for f in sys_font if 'Nanum' in f]
@@ -586,7 +592,15 @@ def main(request):
         wordTxt += makeAll(url)
 
     # 한달치 기사로 text 만들기
-    # wordTxt = open('./static/text/article.txt', "r", encoding="UTF-8").read()
+    # 파일 불러오기
+    month_file_list = glob.glob(r'D:\Profiles\20220170\Desktop\뉴스레터\월간\July\*txt')
+
+    with open(r'D:\Profiles\20220170\Desktop\뉴스레터\월간\July\merge.txt', 'w', encoding='UTF-8') as outfile:
+        for filename in sorted(month_file_list):
+            with open(filename, encoding='UTF-8') as file:        
+                outfile.write(file.read())
+                
+    wordTxt = open(r'D:\Profiles\20220170\Desktop\뉴스레터\월간\July\merge.txt', "r", encoding="UTF-8").read()
 
     # print(wordTxt)
 
@@ -636,7 +650,7 @@ def main(request):
     # Counter로 빈도 집계
     counts = Counter(naword)
     dict_keywords = counts.most_common(100)
-    
+    print(dict_keywords)
     mask = np.array(Image.open('./static/image/Circle.JPG'))
 
     wc = WordCloud(stopwords=stopwords,
@@ -1021,6 +1035,7 @@ def main_new(request):
     pause = driver.find_element(By.CLASS_NAME, 'autoplayControlButton.ButtonVE')
     pause.click()
     container = driver.find_element(By.XPATH, '/html/body/div/div[3]/div[3]/div/div[2]/div/div[1]/div/div/div[3]/div[2]/div/div/div')
+
     aTags = container.find_elements(By.TAG_NAME, 'a')
     print("a 태그 개수: ", len(aTags))
     for a in aTags:
@@ -1030,6 +1045,7 @@ def main_new(request):
         url_list.append(a_href)
 
     wFileName = r'D:\\Profiles\\20220170\\Desktop\\뉴스레터\\DXletter_contents\\' + today + '_main_new.txt'
+    # wFileName = r'D:\\Profiles\\20220170\\Desktop\\뉴스레터\\DXletter_contents\\' + 'temp' + '_main_new.txt'
     if os.path.isfile(wFileName):    
         os.remove(wFileName)
 
@@ -1463,6 +1479,8 @@ def wordcloud_view(request, press_name):
 
 def fetch_cs(request):
     global today, url_dict, press_name, df
+    
+    df = pd.DataFrame(columns=['press_name', 'article_date', 'article_title', 'article_href', 'article_content'])
     datestr = time.strftime("%Y%m%d")
     cs_url_dict = dict()
     all_keywords = []
@@ -1538,7 +1556,6 @@ def fetch_cs(request):
         if breaker == True:
             break
 
-    driver.close()
     print("======== df to json ======= \n", df)
     output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
     timestr = time.strftime("%Y%m%d")
@@ -1557,13 +1574,13 @@ def fetch_cs(request):
 
 def fetch_all(request):
     fetch_cs(request)   # 조선일보
-    driver.close()
     fetch_ja(request)   # 중앙일보
-    driver.close()
     fetch_kh(request)   # 경향신문
-    driver.close()
+    fetch_hk(request)   # 한국경제
 
-    return
+    return render(
+        request, 'board/home.html'
+    )
 
 ######
 def wordcloud_cs(request):

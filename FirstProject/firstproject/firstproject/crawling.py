@@ -1,13 +1,21 @@
 import os
+from os import path
 from selenium import webdriver
 # from webdriver_manager.chrome import ChromDriverManager
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as economy
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import time
 import sys
+import pandas as pd
+import openpyxl
+
 
 options = webdriver.ChromeOptions()
 options.add_argument('--headless')
@@ -48,24 +56,54 @@ def get_href(soup):
     return
 
 def main():
-    case = 4
+    case = 0
     global today, url_list, url_dict, press_name, driver
-    if case == 0:
-        url_list = []
+    if case == 0:           # sway 전체 기사 카드 날짜, 제목, 링크를 data frame으로 저장
+        # all_df = pd.DataFrame(columns=['article_date', 'article_title', 'article_href', 'article_content'])
+        cards_df = pd.DataFrame(columns=['card_date', 'article_title', 'article_href', 'article_cont'])
+
+        # url_list = defaultdict(list)
         press_name = ""
         curr_url = "https://sway.office.com/NnBPrJ8MQfFdSxHQ"
         print("----------- Sway target url: ", curr_url)
         driver.get(curr_url)
-        driver.implicitly_wait(4)
+        # driver.set_window_position(0, 0)
+        # driver.set_window_size(1000, 3000)
+        driver.implicitly_wait(30)
         pause = driver.find_element(By.CLASS_NAME, 'autoplayControlButton.ButtonVE')
         pause.click()
-        container = driver.find_element(By.XPATH, '/html/body/div/div[3]/div[3]/div/div[2]/div/div[1]/div/div/div[3]/div[2]/div/div/div')
-        aTags = container.find_elements(By.TAG_NAME, 'a')
-        print("a 태그 개수: ", len(aTags))
-        for a in aTags:
-            url_list.append(a.get_attribute('href'))
-        print()
+        wait = WebDriverWait(driver, 30)
+        
+        for idx in range(3, 4):
+            if idx==5 or idx==27:
+                continue
+            xpathIndex = '/html/body/div/div[3]/div[3]/div/div[2]/div/div[1]/div/div/div[' + str(idx) + ']/div[2]/div/div/div'
+            wait.until(EC.presence_of_all_elements_located((By.XPATH, xpathIndex)))
+            container = driver.find_element(By.XPATH, xpathIndex)
+            aTags = container.find_elements(By.TAG_NAME, 'a')
+            card_date = container.find_element(By.TAG_NAME, 'p')
+            card_date = card_date.find_element(By.TAG_NAME, 'span').get_attribute('textContent')
+            print('******* card date : ' + card_date + ' *******')
 
+            print("a 태그 개수: ", len(aTags))
+            for a in aTags:
+                article_title = a.get_attribute('textContent')
+                # artitle_title = article_title.replace("\n", " ")
+                article_href = a.get_attribute('href')
+                print(article_title)
+                print(article_href)
+                cards_df = cards_df.append({
+                    'card_date':card_date,
+                    'article_title':article_title,
+                    'article_href':article_href},
+                    ignore_index=True)
+            print()
+
+        print("======== df to csv ======= \n", cards_df)
+        output_path = r"D:\Profiles\20220170\Desktop\뉴스레터\today_news_csv"
+        timestr = time.strftime("%Y%m%d")
+        cards_df.to_excel(path.join(output_path, 'sway 기사_' + timestr + '.xlsx'), header=True, index=True, encoding="utf-8-sig")
+        
     elif case == 1:
         # 기사 html parsing : _cont = driver.find_element(By.ID, 'articletxt')
         kh_url_dict = dict()

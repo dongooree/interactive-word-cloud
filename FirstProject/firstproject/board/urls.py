@@ -17,7 +17,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('main/', views.main),
+    path('monthly/', views.monthly),
     path('main_new/', views.main_new),
     path('home/', views.home, name="home"),
     path('insert/', views.insert),

@@ -20,7 +20,7 @@ from board import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('home/', views.home, name="home"),
-    path('main/', views.main),
+    path('monthly/', views.monthly),
     path('main_new/', views.main_new),
     path('fetch_all/', views.fetch_all, name='fetch_all'),
     path('fetch_cs/', views.fetch_cs, name="fetch_cs"), 
